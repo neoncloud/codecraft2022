@@ -75,7 +75,7 @@ class Map:
     def _get_adj_mat(self):
         xy = np.stack([w.coord for w in self.workbenches], axis=0)
         XY = xy[:, None] - xy[None, :]
-        XY = np.linalg.norm(XY,2,-1)**2
+        XY = np.linalg.norm(XY,2,-1)
         return XY
 
 

@@ -21,15 +21,15 @@ class Scheduler:
         self.wb_id_to_type = {i:w.type_id for i,w in enumerate(self.map.workbenches)}
         self.src_to_tgt = {i:[w for t in self.rule[_.type_id] for w in self.wb_type_to_id[t]] for i,_ in enumerate(self.map.workbenches)}
 
-    def update(self, map_obj=None):
-        if map_obj is not None:
-            self.map = map_obj
+    def get_all_task(self):
         source = list(filter(lambda x: self.map.workbenches[x].product_state, range(len(self.map.workbenches))))    # 找到所有完成生产的工作台
+        all_task = []
         for s in source:
             target_candidate = self.src_to_tgt[s]   # 查找所有可能的目标
             target_candidate = list(filter(lambda w: self.wb_id_to_type[s] not in self.map.workbenches[w].material_state, target_candidate))
             # 过滤掉没空位的
             if len(target_candidate)>0:
                 dist = self.map.adj_mat[s,np.array(target_candidate)]
-                self.tasks_queue.put((s,target_candidate[np.argmin(dist)])) # 找最近的一个工作台
+                all_task.append((s,target_candidate[np.argmin(dist)])) # 找最近的一个工作台
+        return all_task
 
