@@ -1,5 +1,6 @@
 import numpy as np
 from frame import Map
+import sys
 
 class Scheduler:
     def __init__(self, map_obj:Map) -> None:
@@ -36,12 +37,36 @@ class Scheduler:
     
     def dispatch(self):
         free_robots = list(filter(lambda r: r.carrying_item == 0 and r.task_coord is None, self.map.robots)) # 选择空闲机器人
+        # dists = np.stack([r.coord for r in free_robots], axis=-1)
+        # print(self.tasks, file=sys.stderr)
+        # dists = np.linalg.norm(self.wb_coord[self.tasks[:,0]]-dists, 2, -1)
         dists = list(map(lambda r: np.linalg.norm(self.wb_coord[self.tasks[:,0]] - r.coord, axis=-1), free_robots)) # 计算机器人与各个任务起点的距离
+        if len(dists) == 0:
+            return
         dists = np.stack(dists, axis=-1)
         assignment = linear_sum_assignment(dists)[0]
         list(map(lambda t,r: setattr(r, 'task', t), self.tasks[assignment], free_robots)) # 根据分配重排任务列表，并分配到机器人上
         list(map(lambda t,r: setattr(r, 'task_coord', t), self.wb_coord[self.tasks[assignment]], free_robots))
     
+    def init_task(self):
+        source = list(filter(lambda x: self.map.workbenches[x].type_id in (1,2,3), range(self.map.num_workbenches)))    # 找到所有完成生产的工作台
+        all_task = []
+        for s in source:
+            target_candidate = self.src_to_tgt[s]   # 查找所有可能的目标
+            target_candidate = list(filter(lambda w: self.wb_id_to_type[s] not in self.map.workbenches[w].material_state, target_candidate))
+            # 过滤掉没空位的
+            if len(target_candidate)>0:
+                dist = self.map.adj_mat[s,np.array(target_candidate)]
+                all_task.append([s,target_candidate[np.argmin(dist)]]) # 找最近的一个工作台
+        self.tasks = np.array(all_task)
+        return self.tasks
+
+    def step(self):
+        task = self.get_all_task()
+        if len(task) == 0:
+            return
+        self.dispatch()
+
 
 # 匈牙利算法求解任务分配问题
 def linear_sum_assignment(cost_matrix):

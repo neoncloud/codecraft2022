@@ -1,6 +1,10 @@
 from typing import List
 import numpy as np
+import sys
 
+######### 运动学超参数 #########
+K_W = 1
+K_V = 1
 
 class Workbench:
     def __init__(self, type_id: int, x: float, y: float, remaining_time: int, material_state: int, product_state: bool):
@@ -54,17 +58,15 @@ class Robot:
     
     def get_action(self):
         def w_v_fun(delta_dir:np.ndarray, distance:np.ndarray):
-            k_w = 1 # 可以调节的参数
-            w = k_w * delta_dir
+            w = K_W * delta_dir
             v = np.minimum(distance,6)
-            k_v = 1
-            v = k_v*(1-(np.absolute(w)/np.pi))*v
+            v = K_V*(1-(np.absolute(w)/np.pi))*v
             return w, v
         
         def get_w_v(task:np.ndarray):
             distance = np.linalg.norm(task - self.coord, axis=-1)
             tar_cur_dir = task-self.coord
-            tar_dir = np.arctan2(tar_cur_dir) # 每帧更新
+            tar_dir = np.arctan2(tar_cur_dir[0], tar_cur_dir[1]) # 每帧更新
             delta_dir = tar_dir - self.heading
             if np.absolute(delta_dir) > np.pi : delta_dir += 2*np.pi # w的范围是[-pi,pi]
             # print('cur_dir=',self.heading,'tar_dir=',tar_dir,'delta_dir=',delta_dir,'distance=',distance)
@@ -72,7 +74,7 @@ class Robot:
         
         sell, buy, destroy = False, False, False
         if self.task_coord is None:
-            w, v = None, None
+            w, v = 0, 0
         else:
             if self.carrying_item == 0:
                 if self.workbench_id == self.task[0]:
@@ -105,6 +107,20 @@ class Map:
         for i, r in enumerate(self.robots, 2 + workbench_count):
             robot_data = list(map(float, lines[i].split()))
             r.update(int(robot_data[0]), int(robot_data[1]), robot_data[2], robot_data[3], robot_data[4], robot_data[5], robot_data[6], robot_data[7], robot_data[8], robot_data[9])
+
+    def output(self):
+        output = f"{self.frame_num}\n"
+        for i,r in enumerate(self.robots):
+            sell, buy, destroy, w, v = r.get_action()
+            output += f"forward {i} {v}\nrotate {i} {w}\n"
+            if sell:
+                output += f"sell {i}\n"
+            if buy:
+                output += f"buy {i}\n"
+            if destroy:
+                output += f"destroy {i}\n"
+        output += "OK"
+        return output
     
     def _get_adj_mat(self):
         xy = np.stack([w.coord for w in self.workbenches], axis=0)
@@ -113,7 +129,7 @@ class Map:
         return XY
 
 
-def parse_init_input(input_string: str) -> Map:
+def parse_init_frame(input_string: str) -> Map:
     lines = input_string.strip().split('\n')
     frame_num, money = map(int, lines[0].split())
     workbench_count = int(lines[1])
