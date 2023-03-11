@@ -1,6 +1,5 @@
 import numpy as np
 from frame import Map
-from queue import Queue
 
 class Scheduler:
     def __init__(self, map_obj:Map) -> None:
@@ -23,7 +22,7 @@ class Scheduler:
         self.src_to_tgt = {i:[w for t in self.rule[_.type_id] for w in self.wb_type_to_id[t]] for i,_ in enumerate(self.map.workbenches)}
 
     def get_all_task(self):
-        source = list(filter(lambda x: self.map.workbenches[x].product_state, range(len(self.map.workbenches))))    # 找到所有完成生产的工作台
+        source = list(filter(lambda x: self.map.workbenches[x].product_state, range(self.map.num_workbenches)))    # 找到所有完成生产的工作台
         all_task = []
         for s in source:
             target_candidate = self.src_to_tgt[s]   # 查找所有可能的目标
@@ -36,15 +35,15 @@ class Scheduler:
         return self.tasks
     
     def dispatch(self):
-        free_robots = list(filter(lambda i: self.map.robots[i].carrying_item == 0, range(len(self.map.robots))))
-        dists = list(map(lambda i: np.linalg.norm(self.wb_coord[self.tasks[:,0]] - self.map.robots[i].coord, axis=-1),
-                        free_robots))
+        free_robots = list(filter(lambda r: r.carrying_item == 0 and r.task_coord is None, self.map.robots)) # 选择空闲机器人
+        dists = list(map(lambda r: np.linalg.norm(self.wb_coord[self.tasks[:,0]] - r.coord, axis=-1), free_robots)) # 计算机器人与各个任务起点的距离
         dists = np.stack(dists, axis=-1)
         assignment = linear_sum_assignment(dists)[0]
-        return np.array(free_robots)[assignment]
+        list(map(lambda t,r: setattr(r, 'task', t), self.tasks[assignment], free_robots)) # 根据分配重排任务列表，并分配到机器人上
+        list(map(lambda t,r: setattr(r, 'task_coord', t), self.wb_coord[self.tasks[assignment]], free_robots))
     
 
-
+# 匈牙利算法求解任务分配问题
 def linear_sum_assignment(cost_matrix):
     cost_matrix = np.asarray(cost_matrix)
     if len(cost_matrix.shape) != 2:
