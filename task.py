@@ -24,11 +24,12 @@ class Scheduler:
     def update(self, map_obj=None):
         if map_obj is not None:
             self.map = map_obj
-        source = list(filter(lambda x: self.map.workbenches[x].product_state, range(len(self.map.workbenches))))
+        source = list(filter(lambda x: self.map.workbenches[x].product_state, range(len(self.map.workbenches))))    # 找到所有完成生产的工作台
         for s in source:
-            target_candidate = self.src_to_tgt[s]
+            target_candidate = self.src_to_tgt[s]   # 查找所有可能的目标
             target_candidate = list(filter(lambda w: self.wb_id_to_type[s] not in self.map.workbenches[w].material_state, target_candidate))
+            # 过滤掉没空位的
             if len(target_candidate)>0:
                 dist = self.map.adj_mat[s,np.array(target_candidate)]
-                self.tasks_queue.put((s,target_candidate[np.argmin(dist)]))
+                self.tasks_queue.put((s,target_candidate[np.argmin(dist)])) # 找最近的一个工作台
 
