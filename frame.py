@@ -3,8 +3,8 @@ import numpy as np
 
 
 class Workbench:
-    def __init__(self, id: int, x: float, y: float, remaining_time: int, material_state: int, product_state: bool):
-        self.id = id
+    def __init__(self, type_id: int, x: float, y: float, remaining_time: int, material_state: int, product_state: bool):
+        self.type_id = type_id
         self.coord = np.array([x, y])
         self.remaining_time = remaining_time
         self.material_state = [j for j, bit in enumerate(
@@ -53,11 +53,12 @@ class Robot:
             self.coord = np.array([x, y])
 
 class Map:
-    def __init__(self, frame_num: int, money: int, workbenches: List[Workbench], robots:List[Robot]):
+    def __init__(self, frame_num: int, money: int, workbenches: List[Workbench], robots:List[Robot], workbench_dict:dict):
         self.frame_num = frame_num
         self.money = money
         self.workbenches = workbenches
         self.robots = robots
+        self.adj_mat = self._get_adj_mat()
 
     def update(self, input_string:str):
         lines = input_string.strip().split('\n')
@@ -70,6 +71,12 @@ class Map:
         for i, r in enumerate(self.robots, 2 + workbench_count):
             robot_data = list(map(float, lines[i].split()))
             r.update(int(robot_data[0]), int(robot_data[1]), robot_data[2], robot_data[3], robot_data[4], robot_data[5], robot_data[6], robot_data[7], robot_data[8], robot_data[9])
+    
+    def _get_adj_mat(self):
+        xy = np.stack([w.coord for w in self.workbenches], axis=0)
+        XY = xy[:, None] - xy[None, :]
+        XY = np.linalg.norm(XY,2,-1)**2
+        return XY
 
 
 def parse_input(input_string: str) -> Map:
@@ -77,16 +84,18 @@ def parse_input(input_string: str) -> Map:
     frame_num, money = map(int, lines[0].split())
     workbench_count = int(lines[1])
     workbenches = []
+    workbench_dict = {i:[] for i in range(1,10)}
     for i in range(2, 2 + workbench_count):
         workbench_data = list(map(float, lines[i].split()))
         workbench = Workbench(int(workbench_data[0]), workbench_data[1], workbench_data[2], int(
             workbench_data[3]), int(workbench_data[4]), bool(workbench_data[5]))
         workbenches.append(workbench)
+        workbench_dict[int(workbench_data[0])].append(i-2)
     robots = []
     for i in range(2 + workbench_count, 2 + workbench_count + 4):
         robot_data = list(map(float, lines[i].split()))
         robot = Robot(int(robot_data[0]), int(robot_data[1]), robot_data[2], robot_data[3],
                       robot_data[4], robot_data[5], robot_data[6], robot_data[7], robot_data[8], robot_data[9])
         robots.append(robot)
-    map_obj = Map(frame_num, money, workbenches, robots)
+    map_obj = Map(frame_num, money, workbenches, robots, workbench_dict)
     return map_obj
