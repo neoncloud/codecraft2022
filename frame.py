@@ -32,7 +32,7 @@ class Robot:
         self.linear_velocity = np.array([linear_velocity_x, linear_velocity_y])
         self.heading = heading
         self.coord = np.array([x, y])
-        self.task = () #用于存每次的任务 该robot要去买的地方|该robot要去卖的地方
+        self.task = () #用于存每次的任务 该robot要去买的坐标|该robot要去卖的坐标
         self.behav_buy = False
         self.behav_sale = False
         self.behav_destroy = False
@@ -70,28 +70,25 @@ class Robot:
             v = k_v*(1-(np.absolute(w)/np.pi))*v
             return w, v
         
+        def get_w_v(self,task):
+                distance = np.linalg.norm(task - self.coord)
+                tar_cur_dir = [task[0]-self.coord[0],task[1]-self.coord[1]]
+                tar_dir = np.arctan2(tar_cur_dir[1],tar_cur_dir[0]) # 每帧更新
+                delta_dir = tar_dir - self.heading
+                if np.absolute(delta_dir) > np.pi : delta_dir += 2*np.pi # w的范围是[-pi,pi]
+                print('cur_dir=',self.heading,'tar_dir=',tar_dir,'delta_dir=',delta_dir,'distance=',distance)
+                self.behav_w, self.behav_v = w_v_fun(delta_dir = delta_dir, distance = distance)
+        
         if len(self.task) == 0: return
         else:
             if self.carrying_item == 0:
                 if self.workbench_id != -1:
                     self.behav_buy = True
-                distance = np.linalg.norm(self.task[0] - self.coord)
-                tar_cur_dir = [self.task[0][0]-self.coord[0],self.task[0][1]-self.coord[1]]
-                tar_dir = np.arctan2(tar_cur_dir[1],tar_cur_dir[0]) # 每帧更新
-                delta_dir = tar_dir - self.heading
-                if np.absolute(delta_dir) > np.pi : delta_dir += 2*np.pi # w的范围是[-pi,pi]
-                print('cur_dir=',self.heading,'tar_dir=',tar_dir,'delta_dir=',delta_dir,'distance=',distance)
-                self.behav_w, self.behav_v = w_v_fun(delta_dir = delta_dir, distance = distance)
+                get_w_v(self,self.task[0])
             else:
                 if self.workbench_id != -1:
                     self.behav_sale = True
-                distance = np.linalg.norm(self.task[1] - self.coord)
-                tar_cur_dir = [self.task[1][0]-self.coord[0],self.task[1][1]-self.coord[1]]
-                tar_dir = np.arctan2(tar_cur_dir[1],tar_cur_dir[0]) # 每帧更新
-                delta_dir = tar_dir - self.heading
-                if np.absolute(delta_dir) > np.pi : delta_dir += 2*np.pi # w的范围是[-pi,pi]
-                print('cur_dir=',self.heading,'tar_dir=',tar_dir,'delta_dir=',delta_dir,'distance=',distance)
-                self.behav_w, self.behav_v = w_v_fun(delta_dir = delta_dir, distance = distance)
+                get_w_v(self,self.task[1])
             
         
 
