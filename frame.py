@@ -32,7 +32,13 @@ class Robot:
         self.linear_velocity = np.array([linear_velocity_x, linear_velocity_y])
         self.heading = heading
         self.coord = np.array([x, y])
-
+        self.task = () #用于存每次的任务 该robot要去买的地方|该robot要去卖的地方
+        self.behav_buy = False
+        self.behav_sale = False
+        self.behav_destroy = False
+        self.behav_w = 0
+        self.behav_v = 0
+        
     def update(self, workbench_id:int=None, carrying_item:int=None, time_value_coeff:float=None, collision_value_coeff:float=None,
                angular_velocity:float=None, linear_velocity_x: float=None, linear_velocity_y: float=None, heading:float=None, x:float=None, y:float=None):
         if workbench_id is not None:
@@ -51,14 +57,51 @@ class Robot:
             self.heading = heading
         if x is not None and y is not None:
             self.coord = np.array([x, y])
+    
+    def kinematic(self):
+        def w_v_fun(delta_dir,distance):
+            k_w = 1 # 可以调节的参数
+            w = k_w * delta_dir
+            if distance >= 6:
+                v = 6
+            else:
+                v = distance
+            k_v = 1
+            v = k_v*(1-(np.absolute(w)/np.pi))*v
+            return w, v
+        
+        if len(self.task) == 0: return
+        else:
+            if self.carrying_item == 0:
+                if self.workbench_id != -1:
+                    self.behav_buy = True
+                distance = np.linalg.norm(self.task[0] - self.coord)
+                tar_cur_dir = [self.task[0][0]-self.coord[0],self.task[0][1]-self.coord[1]]
+                tar_dir = np.arctan2(tar_cur_dir[1],tar_cur_dir[0]) # 每帧更新
+                delta_dir = tar_dir - self.heading
+                if np.absolute(delta_dir) > np.pi : delta_dir += 2*np.pi # w的范围是[-pi,pi]
+                print('cur_dir=',self.heading,'tar_dir=',tar_dir,'delta_dir=',delta_dir,'distance=',distance)
+                self.behav_w, self.behav_v = w_v_fun(delta_dir = delta_dir, distance = distance)
+            else:
+                if self.workbench_id != -1:
+                    self.behav_sale = True
+                distance = np.linalg.norm(self.task[1] - self.coord)
+                tar_cur_dir = [self.task[1][0]-self.coord[0],self.task[1][1]-self.coord[1]]
+                tar_dir = np.arctan2(tar_cur_dir[1],tar_cur_dir[0]) # 每帧更新
+                delta_dir = tar_dir - self.heading
+                if np.absolute(delta_dir) > np.pi : delta_dir += 2*np.pi # w的范围是[-pi,pi]
+                print('cur_dir=',self.heading,'tar_dir=',tar_dir,'delta_dir=',delta_dir,'distance=',distance)
+                self.behav_w, self.behav_v = w_v_fun(delta_dir = delta_dir, distance = distance)
+            
+        
 
 class Map:
     def __init__(self, frame_num: int, money: int, workbenches: List[Workbench], robots:List[Robot], workbench_dict:dict):
         self.frame_num = frame_num
         self.money = money
         self.workbenches = workbenches
-        self.robots = robots
-        self.adj_mat = self._get_adj_mat()
+        self.robots = robots 
+        self.adj_mat = self._get_adj_mat() # 邻接矩阵
 
     def update(self, input_string:str):
         lines = input_string.strip().split('\n')
