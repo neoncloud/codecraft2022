@@ -8,7 +8,8 @@ K_V = 5
 S = 6
 
 class Workbench:
-    def __init__(self, type_id: int, x: float, y: float, remaining_time: int, material_state: int, product_state: bool):
+    def __init__(self, type_id: int, x: float, y: float, remaining_time: int, material_state: int, product_state: bool, index:int):
+        self.index = index
         self.type_id = type_id
         self.coord = np.array([x, y])
         self.remaining_time = remaining_time
@@ -149,7 +150,7 @@ def parse_init_frame(input_string: str) -> Map:
     for i in range(2, 2 + workbench_count):
         workbench_data = list(map(float, lines[i].split()))
         workbench = Workbench(int(workbench_data[0]), workbench_data[1], workbench_data[2], int(
-            workbench_data[3]), int(workbench_data[4]), bool(workbench_data[5]))
+            workbench_data[3]), int(workbench_data[4]), bool(workbench_data[5]), i-2)
         workbenches.append(workbench)
     robots = []
     for i in range(2 + workbench_count, 2 + workbench_count + 4):

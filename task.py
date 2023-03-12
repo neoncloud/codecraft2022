@@ -5,7 +5,9 @@ import sys
 class Scheduler:
     def __init__(self, map_obj:Map) -> None:
         self.tasks = None
+        self.ongoing_task = -np.ones((4,2))
         self.map = map_obj
+        self.dead_robot = np.ones((4,1))
         self.rule = {
             1:(4,5),
             2:(4,6),
@@ -17,56 +19,78 @@ class Scheduler:
             8:(),
             9:()
         }
-        self.wb_type_to_id = {i:[w for w,_ in enumerate(self.map.workbenches) if _.type_id==i] for i in range(1,10)}
-        self.wb_id_to_type = {i:w.type_id for i,w in enumerate(self.map.workbenches)}
+        self.wb_type_to_id = {i:[w.index for w in self.map.workbenches if w.type_id==i] for i in range(1,10)}
+        self.wb_id_to_type = {w.index:w.type_id for w in self.map.workbenches}
         self.wb_coord = np.array([w.coord for w in self.map.workbenches])
-        self.src_to_tgt = {i:[w for t in self.rule[_.type_id] for w in self.wb_type_to_id[t]] for i,_ in enumerate(self.map.workbenches)}
+        self.src_to_tgt = {i.index:[w for t in self.rule[i.type_id] for w in self.wb_type_to_id[t]] for i in self.map.workbenches}
 
     def get_all_task(self):
-        source = list(filter(lambda x: self.map.workbenches[x].product_state, range(self.map.num_workbenches)))    # 找到所有完成生产的工作台
+        # 找到所有完成生产的工作台, 且当前并没有被安排
+        source = list(filter(lambda w: w.product_state and not np.isin(w, self.ongoing_task[:, 0]).any(), self.map.workbenches))
         all_task = []
         for s in source:
-            target_candidate = self.src_to_tgt[s]   # 查找所有可能的目标
-            target_candidate = list(filter(lambda w: self.wb_id_to_type[s] not in self.map.workbenches[w].material_state, target_candidate))
-            # 过滤掉没空位的
+            # 查找所有可能的目标
+            target_candidate = self.src_to_tgt[s.index]
+            # 过滤掉没空位的 和 已经被分配的
+            target_candidate = list(filter(lambda w: s.type_id not in self.map.workbenches[w].material_state and not np.isin(w, self.ongoing_task[:, 1]).any(), target_candidate))
+            target_candidate = np.array(target_candidate)
             if len(target_candidate)>0:
-                dist = self.map.workbench_adj_mat[s,np.array(target_candidate)]
-                all_task.append([s,target_candidate[np.argmin(dist)]]) # 找最近的一个工作台
+                dist = self.map.workbench_adj_mat[s.index, target_candidate]
+                # 找最近的一个工作台
+                all_task.append([s.index, target_candidate[np.argmin(dist)]])
         self.tasks = np.array(all_task)
+        # self.tasks = all_task[np.isin(all_task, self.ongoing_task, invert=True).any(-1)]# 筛选不在 正在进行任务列表 的, 使用 any() 意味着起点和终点都得是没被安排的
         return self.tasks
     
     def dispatch(self):
         free_robots = list(filter(lambda r: r.carrying_item == 0 and r.task_coord is None, self.map.robots)) # 选择空闲机器人
-        # dists = np.stack([r.coord for r in free_robots], axis=-1)
-        # print(self.tasks, file=sys.stderr)
-        # dists = np.linalg.norm(self.wb_coord[self.tasks[:,0]]-dists, 2, -1)
-        dists = list(map(lambda r: np.linalg.norm(self.wb_coord[self.tasks[:,0]] - r.coord, axis=-1), free_robots)) # 计算机器人与各个任务起点的距离
-        if len(dists) == 0:
-            return
+        dists = list(map(lambda r: np.linalg.norm(self.wb_coord[self.tasks[:,0]] - r.coord, axis=-1), self.map.robots)) # 计算机器人与各个任务起点的距离
+        # if len(dists) == 0:
+        #     return
         dists = np.stack(dists, axis=-1)
         assignment = linear_sum_assignment(dists)[0]
-        list(map(lambda t,r: setattr(r, 'task', t), self.tasks[assignment], free_robots)) # 根据分配重排任务列表，并分配到机器人上
-        list(map(lambda t,r: setattr(r, 'task_coord', t), self.wb_coord[self.tasks[assignment]], free_robots))
+        print(assignment, file=sys.stderr)
+        assignment = assignment[:self.map.num_robots]
+        for r in free_robots:
+            self.ongoing_task[r.index] = self.tasks[assignment][r.index]
+            r.task = self.tasks[assignment][r.index]
+            r.task_coord = self.wb_coord[self.tasks[assignment]][r.index]
         return assignment
     
     def init_task(self):
-        source = list(filter(lambda x: self.map.workbenches[x].type_id in (1,2,3), range(self.map.num_workbenches)))    # 找到所有完成生产的工作台
+        source = list(filter(lambda w: w.type_id in (1,2,3), self.map.workbenches))
         all_task = []
         for s in source:
-            target_candidate = self.src_to_tgt[s]   # 查找所有可能的目标
-            target_candidate = list(filter(lambda w: self.wb_id_to_type[s] not in self.map.workbenches[w].material_state, target_candidate))
-            # 过滤掉没空位的
+            # 查找所有可能的目标
+            target_candidate = self.src_to_tgt[s.index]
+            # 过滤掉没空位的 和 已经被分配的
+            target_candidate = list(filter(lambda w: s.type_id not in self.map.workbenches[w].material_state and not np.isin(w, self.ongoing_task[:, 1]).any(), target_candidate))
+            target_candidate = np.array(target_candidate)
             if len(target_candidate)>0:
-                dist = self.map.workbench_adj_mat[s,np.array(target_candidate)]
-                all_task.append([s,target_candidate[np.argmin(dist)]]) # 找最近的一个工作台
+                dist = self.map.workbench_adj_mat[s.index, target_candidate]
+                # 找最近的一个工作台
+                all_task.append([s.index, target_candidate[np.argmin(dist)]])
         self.tasks = np.array(all_task)
         return self.tasks
+    
+    def clear_ongoing(self):
+        # 如果机器人清空了任务， 则对应地清理正在进行任务列表
+        for r in self.map.robots:
+            if r.task is None:
+                self.ongoing_task[r.index][0] = -1
+                self.ongoing_task[r.index][1] = -1
+    
+    def find_dead_robot(self):
+        for r in self.map.robots:
+            pass
 
     def step(self):
+        self.clear_ongoing()
         task = self.get_all_task()
         if len(task) == 0:
             return
         self.dispatch()
+        # print(self.ongoing_task, file=sys.stderr)
 
 
 # 匈牙利算法求解任务分配问题
@@ -76,6 +100,7 @@ def linear_sum_assignment(cost_matrix):
         raise ValueError("expected a matrix (2-d array), got a %r array"
                          % (cost_matrix.shape,))
 
+    # The algorithm expects more columns than rows in the cost matrix.
     if cost_matrix.shape[1] < cost_matrix.shape[0]:
         cost_matrix = cost_matrix.T
         transposed = True
@@ -84,6 +109,8 @@ def linear_sum_assignment(cost_matrix):
 
     state = _Hungary(cost_matrix)
 
+    # No need to bother with assignments if one of the dimensions
+    # of the cost matrix is zero-length.
     step = None if 0 in cost_matrix.shape else _step1
 
     while step is not None:
@@ -109,21 +136,19 @@ class _Hungary(object):
         self.marked = np.zeros((n, m), dtype=int)
 
     def _clear_covers(self):
+        """Clear all covered matrix cells"""
         self.row_uncovered[:] = True
         self.col_uncovered[:] = True
 
-
 def _step1(state):
-    state.C -= np.apply_along_axis(np.min, 1, state.C)[:, np.newaxis]
-    
-    indices = filter(lambda x: state.col_uncovered[x[1]] and state.row_uncovered[x[0]], zip(*np.where(state.C == 0)))
-    
-    state.marked[tuple(zip(*indices))] = 1
-    state.col_uncovered[list(set(x[1] for x in indices))] = False
-    state.row_uncovered[list(set(x[0] for x in indices))] = False
-    
+    state.C -= state.C.min(axis=1)[:, np.newaxis]
+    for i, j in zip(*np.where(state.C == 0)):
+        if state.col_uncovered[j] and state.row_uncovered[i]:
+            state.marked[i, j] = 1
+            state.col_uncovered[j] = False
+            state.row_uncovered[i] = False
+
     state._clear_covers()
-    
     return _step3
 
 
@@ -136,6 +161,7 @@ def _step3(state):
 
 
 def _step4(state):
+    # We convert to int as numpy operations are faster on int
     C = (state.C == 0).astype(int)
     covered_C = C * state.row_uncovered[:, np.newaxis]
     covered_C *= np.asarray(state.col_uncovered, dtype=int)
@@ -183,6 +209,8 @@ def _step5(state):
             path[count, 0] = row
             path[count, 1] = path[count - 1, 1]
 
+        # Find the first prime element in the row defined by the
+        # first path step
         col = np.argmax(state.marked[path[count, 0]] == 2)
         if state.marked[row, col] != 2:
             col = -1
@@ -190,6 +218,7 @@ def _step5(state):
         path[count, 0] = path[count - 1, 0]
         path[count, 1] = col
 
+    # Convert paths
     for i in range(count + 1):
         if state.marked[path[i, 0], path[i, 1]] == 1:
             state.marked[path[i, 0], path[i, 1]] = 0
@@ -197,11 +226,13 @@ def _step5(state):
             state.marked[path[i, 0], path[i, 1]] = 1
 
     state._clear_covers()
+    # Erase all prime markings
     state.marked[state.marked == 2] = 0
     return _step3
 
 
 def _step6(state):
+    # the smallest uncovered value in the matrix
     if np.any(state.row_uncovered) and np.any(state.col_uncovered):
         minval = np.min(state.C[state.row_uncovered], axis=0)
         minval = np.min(minval[state.col_uncovered])
