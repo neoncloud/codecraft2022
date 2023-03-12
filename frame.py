@@ -65,7 +65,7 @@ class Robot:
             self.task = None
             self.task_coord = None
     
-    def get_action(self, adj_mat:np.ndarray, headin_glist:np.ndarray):
+    def get_action(self, adj_mat:np.ndarray, headin_glist:np.ndarray, robot_coord:np.ndarray):
         def w_v_fun(delta_dir:np.ndarray, distance:np.ndarray):
             w = K_W * delta_dir
             v = np.minimum(distance,S)
@@ -126,6 +126,7 @@ class Map:
         self.workbench_adj_mat = self._get_workbench_adj_mat() # 邻接矩阵
         self.robot_adj_mat = self._get_robot_adj_mat() # 邻接矩阵
         self.robot_heading = [r.heading for r in self.robots]
+        self.robot_coord = [r.coord for r in self.robots]
         self.num_robots = len(robots)
         self.num_workbenches = len(workbenches)
 
@@ -146,7 +147,7 @@ class Map:
     def output(self):
         output = f"{self.frame_num}\n"
         for i,r in enumerate(self.robots):
-            sell, buy, destroy, w, v = r.get_action(self.robot_adj_mat, self.robot_heading)
+            sell, buy, destroy, w, v = r.get_action(self.robot_adj_mat, self.robot_heading, self.robot_coord)
             output += f"forward {i} {v}\nrotate {i} {w}\n"
             if sell:
                 output += f"sell {i}\n"
