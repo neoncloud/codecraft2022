@@ -3,8 +3,8 @@ import numpy as np
 import sys
 
 ######### 运动学超参数 #########
-K_W = 10
-K_V = 5
+K_W = 6
+K_V = 20
 S = 6
 
 class Workbench:
