@@ -110,23 +110,6 @@ class Robot:
                 else:
                     # w -= K_W*PZGB_w ## PZGB_w希望可以动态调整
                     w -= (1-(min_dis-3/PZBJ)) * PZGB_w
-            #     headin_duifang = (2*np.pi - headin_glist[min_index]) % (2*np.pi) if headin_glist[min_index] < 0 else headin_glist[min_index]
-            #     headin_ziji = (2*np.pi - headin_glist[self.index]) % (2*np.pi) if headin_glist[self.index] < 0 else headin_glist[self.index]
-            #     angle = np.abs(headin_duifang - headin_ziji)
-            #     if angle > 120/180*np.pi:
-            #         if headin_ziji > headin_duifang: 
-            #             w -= (PZBJ-adj_mat[self.index][min_index])*PZGB_w1
-            #         else:
-            #             w -= (PZBJ-adj_mat[self.index][min_index])*PZGB_w1
-            #     else:
-            #         if headin_ziji > headin_duifang:
-            #             w += (PZBJ-adj_mat[self.index][min_index])*PZGB_w2
-            #         else:
-            #             w -= (PZBJ-adj_mat[self.index][min_index])*PZGB_w2
-            # # if adj_mat[self.index][min_index] <= 1.5 and self.index < min_index:
-            # #     v = -2
-            # if  w > np.pi:
-            #     w = 2*np.pi - w
             ###防撞墙
             # if self.coord[0] < WALL or self.coord[1] < WALL or (50-self.coord[1]) < WALL or (50-self.coord[0]) < WALL:
             #     v = 0.1
