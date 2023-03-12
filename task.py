@@ -37,7 +37,7 @@ class Scheduler:
             # 查找所有可能的目标
             target_candidate = self.src_to_tgt[s.index]
             # 过滤掉没空位的 和 已经被分配的
-            target_candidate = list(filter(lambda w: s.type_id not in self.map.workbenches[w].material_state and not self.map.workbenches[w].assigned_sell, target_candidate))
+            target_candidate = list(filter(lambda w: s.type_id not in self.map.workbenches[w].material_state+self.map.workbenches[w].assigned_sell, target_candidate))
             target_candidate = np.array(target_candidate)
             if len(target_candidate)>0:
                 dist = self.map.workbench_adj_mat[s.index, target_candidate]
@@ -72,8 +72,9 @@ class Scheduler:
                     continue
                 task = tier[assignment][r.index]
                 self.map.workbenches[task[0]].assigned_buy = True
-                if self.wb_id_to_type[task[1]] not in (8,9): # 8 号和 9号只进不产 
-                    self.map.workbenches[task[1]].assigned = True
+                if self.wb_id_to_type[task[1]] not in (8,9): # 8 号和 9号只进不产
+                    # 给对应工作台注册一个即将进来的工件种类
+                    self.map.workbenches[task[1]].assigned_sell.append(self.wb_id_to_type[task[0]])
                 r.task = task
                 r.task_coord = self.map.wb_coord[task]
     
@@ -84,7 +85,7 @@ class Scheduler:
             # 查找所有可能的目标
             target_candidate = self.src_to_tgt[s.index]
             # 过滤掉没空位的 和 已经被分配的
-            target_candidate = list(filter(lambda w: s.type_id not in self.map.workbenches[w].material_state and not np.isin(w, self.ongoing_task[:, 1]).any(), target_candidate))
+            target_candidate = list(filter(lambda w: s.type_id not in self.map.workbenches[w].material_state, target_candidate))
             target_candidate = np.array(target_candidate)
             if len(target_candidate)>0:
                 dist = self.map.workbench_adj_mat[s.index, target_candidate]
@@ -99,13 +100,21 @@ class Scheduler:
             if r.workbench_id == r.task[1] and r.carrying_item==0:
             # 位于任务末端，且卖完了东西，则清空任务
                 self.map.workbenches[r.task[0]].assigned_buy = False
-                self.map.workbenches[r.task[1]].assigned_sell = False
+                self.map.workbenches[r.task[1]].assigned_sell = []
                 r.task_coord = None
                 r.task = None
     
-    def find_dead_robot(self):
-        for r in self.map.robots:
-            pass
+    def save_dead_robot(self):
+        for r in self.map.robots: # 发生冲突，到了但是卖不了
+            if r.workbench_id == r.task[1] and r.carrying_item!=0:
+                target_candidate = self.src_to_tgt[r.carrying_item]
+                # 过滤掉没空位的 和 已经被分配的
+                target_candidate = list(filter(lambda w: r.carrying_item not in self.map.workbenches[w].material_state+self.map.workbenches[w].assigned_sell, target_candidate))
+                dist = self.map.workbench_adj_mat[r.task[1], target_candidate]
+                target = target_candidate[np.argmin(dist)]
+                r.task[1] = target
+                r.task_coord[1] = self.map.wb_coord[target]
+
 
     def pad_to_4(self, mat):
         """

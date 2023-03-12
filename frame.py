@@ -23,7 +23,7 @@ class Workbench:
             reversed(bin(int(material_state))[2:])) if bit == "1"]
         self.product_state = product_state
         self.assigned_buy = False
-        self.assigned_sell = False
+        self.assigned_sell = []
 
     def update(self, remaining_time:int=None, material_state:int=None, product_state:bool=None):
         self.remaining_time = remaining_time
