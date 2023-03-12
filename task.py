@@ -44,7 +44,7 @@ class Scheduler:
                     task_list = tier_3
                 if s.index in (4,5,6):
                     task_list = tier_2
-                if s.index in (7,):
+                else:
                     task_list = tier_1
                 task_list.append([s.index, target_candidate[np.argmin(dist)]])
         self.tier_1 = np.array(tier_1)
