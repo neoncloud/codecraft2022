@@ -3,12 +3,13 @@ import numpy as np
 import sys
 
 ######### 运动学超参数 #########
-K_W = 5
+K_W = 2 ## 正常转向时
 K_V = 4
 S = 6
 PZBJ = 4#碰撞半径，当机器人距离小于这个值时触发规避
-PZGB_w1 = 60/180*np.pi
-PZGB_w2 = 15/180*np.pi
+# PZBJ = 6 # 一般碰撞半径
+PZGB_w = 60/180*np.pi
+# PZGB_w2 = 15/180*np.pi
 PZGB_v = 1
 WALL = 0.3
 
@@ -95,13 +96,22 @@ class Robot:
                     sell = True
                 w,v = get_w_v(self.task_coord[1,:])
             
-            ###防撞墙
-            if self.coord[0] < WALL or self.coord[1] < WALL or (50-self.coord[1]) < WALL or (50-self.coord[0]) < WALL:
-                v = 0.1
-                
             #####防碰撞
             min_index = np.where(adj_mat[self.index] != 0)[0].min()  # 找到距离最小的
-            # if adj_mat[self.index][min_index] <= PZBJ:
+            min_dis = adj_mat[self.index][min_index]
+            if min_dis <= PZBJ: # 若最近的机器人距离小于碰撞半径，触发防碰撞
+                duifang_head = headin_glist[min_index]
+                del_dir = duifang_head - self.heading
+                if del_dir > np.pi:
+                    del_dir -= 2*np.pi
+                elif del_dir < -np.pi:
+                    del_dir += 2*np.pi
+                if np.abs(del_dir) < 0.5*np.pi:
+                    if self.index < min_index:
+                        v = v * ((min_dis-1.5)/PZBJ)
+                else:
+                    # w -= K_W*PZGB_w ## PZGB_w希望可以动态调整
+                    w -= (1-(min_dis-3/PZBJ)) * PZGB_w
             #     headin_duifang = (2*np.pi - headin_glist[min_index]) % (2*np.pi) if headin_glist[min_index] < 0 else headin_glist[min_index]
             #     headin_ziji = (2*np.pi - headin_glist[self.index]) % (2*np.pi) if headin_glist[self.index] < 0 else headin_glist[self.index]
             #     angle = np.abs(headin_duifang - headin_ziji)
@@ -119,6 +129,9 @@ class Robot:
             # #     v = -2
             # if  w > np.pi:
             #     w = 2*np.pi - w
+            ###防撞墙
+            # if self.coord[0] < WALL or self.coord[1] < WALL or (50-self.coord[1]) < WALL or (50-self.coord[0]) < WALL:
+            #     v = 0.1
         return sell, buy, destroy, w, v
 
 class Map:
