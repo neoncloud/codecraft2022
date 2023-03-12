@@ -30,7 +30,7 @@ class Scheduler:
             target_candidate = list(filter(lambda w: self.wb_id_to_type[s] not in self.map.workbenches[w].material_state, target_candidate))
             # 过滤掉没空位的
             if len(target_candidate)>0:
-                dist = self.map.adj_mat[s,np.array(target_candidate)]
+                dist = self.map.workbench_adj_mat[s,np.array(target_candidate)]
                 all_task.append([s,target_candidate[np.argmin(dist)]]) # 找最近的一个工作台
         self.tasks = np.array(all_task)
         return self.tasks
@@ -57,7 +57,7 @@ class Scheduler:
             target_candidate = list(filter(lambda w: self.wb_id_to_type[s] not in self.map.workbenches[w].material_state, target_candidate))
             # 过滤掉没空位的
             if len(target_candidate)>0:
-                dist = self.map.adj_mat[s,np.array(target_candidate)]
+                dist = self.map.workbench_adj_mat[s,np.array(target_candidate)]
                 all_task.append([s,target_candidate[np.argmin(dist)]]) # 找最近的一个工作台
         self.tasks = np.array(all_task)
         return self.tasks

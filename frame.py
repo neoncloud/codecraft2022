@@ -25,7 +25,8 @@ class Workbench:
 
 class Robot:
     def __init__(self, workbench_id: int, carrying_item: int, time_value_coeff: float, collision_value_coeff: float,
-                 angular_velocity: float, linear_velocity_x: float, linear_velocity_y: float, heading: float, x: float, y: float):
+                 angular_velocity: float, linear_velocity_x: float, linear_velocity_y: float, heading: float, x: float, y: float, index:int):
+        self.index =  index # 机器人的唯一索引
         self.workbench_id = workbench_id
         self.carrying_item = carrying_item
         self.time_value_coeff = time_value_coeff
@@ -57,7 +58,7 @@ class Robot:
             self.task = None
             self.task_coord = None
     
-    def get_action(self):
+    def get_action(self, adj_mat:np.ndarray, heading_list:np.ndarray):
         def w_v_fun(delta_dir:np.ndarray, distance:np.ndarray):
             w = K_W * delta_dir
             v = np.minimum(distance,S)
@@ -93,7 +94,9 @@ class Map:
         self.money = money
         self.workbenches = workbenches
         self.robots = robots 
-        self.adj_mat = self._get_adj_mat() # 邻接矩阵
+        self.workbench_adj_mat = self._get_workbench_adj_mat() # 邻接矩阵
+        self.robot_adj_mat = self._get_robot_adj_mat() # 邻接矩阵
+        self.robot_heading = [r.heading for r in self.robots]
         self.num_robots = len(robots)
         self.num_workbenches = len(workbenches)
 
@@ -108,11 +111,13 @@ class Map:
         for i, r in enumerate(self.robots, 2 + workbench_count):
             robot_data = list(map(float, lines[i].split()))
             r.update(int(robot_data[0]), int(robot_data[1]), robot_data[2], robot_data[3], robot_data[4], robot_data[5], robot_data[6], robot_data[7], robot_data[8], robot_data[9])
+        self.robot_adj_mat = self._get_robot_adj_mat()
+        self.robot_heading = [r.heading for r in self.robots]
 
     def output(self):
         output = f"{self.frame_num}\n"
         for i,r in enumerate(self.robots):
-            sell, buy, destroy, w, v = r.get_action()
+            sell, buy, destroy, w, v = r.get_action(self.robot_adj_mat, self.robot_heading)
             output += f"forward {i} {v}\nrotate {i} {w}\n"
             if sell:
                 output += f"sell {i}\n"
@@ -123,12 +128,18 @@ class Map:
         output += "OK"
         return output
     
-    def _get_adj_mat(self):
-        xy = np.stack([w.coord for w in self.workbenches], axis=0)
+    def _get_adj_mat(self, xy):
         XY = xy[:, None] - xy[None, :]
         XY = np.linalg.norm(XY,2,-1)
         return XY
 
+    def _get_workbench_adj_mat(self):
+        xy = np.stack([w.coord for w in self.workbenches], axis=0)
+        return self._get_adj_mat(xy)
+
+    def _get_robot_adj_mat(self):
+        xy = np.stack([r.coord for r in self.robots], axis=0)
+        return self._get_adj_mat(xy)
 
 def parse_init_frame(input_string: str) -> Map:
     lines = input_string.strip().split('\n')
@@ -144,7 +155,7 @@ def parse_init_frame(input_string: str) -> Map:
     for i in range(2 + workbench_count, 2 + workbench_count + 4):
         robot_data = list(map(float, lines[i].split()))
         robot = Robot(int(robot_data[0]), int(robot_data[1]), robot_data[2], robot_data[3],
-                      robot_data[4], robot_data[5], robot_data[6], robot_data[7], robot_data[8], robot_data[9])
+                      robot_data[4], robot_data[5], robot_data[6], robot_data[7], robot_data[8], robot_data[9], i-2-workbench_count)
         robots.append(robot)
     map_obj = Map(frame_num, money, workbenches, robots)
     return map_obj
