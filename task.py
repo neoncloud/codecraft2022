@@ -49,7 +49,7 @@ class Scheduler:
         #     return
         dists = np.stack(dists, axis=-1)
         assignment = linear_sum_assignment(dists)[0]
-        print(assignment, file=sys.stderr)
+        # print(assignment, file=sys.stderr)
         assignment = assignment[:self.map.num_robots]
         for r in free_robots:
             self.ongoing_task[r.index] = self.tasks[assignment][r.index]
