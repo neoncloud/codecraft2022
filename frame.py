@@ -3,8 +3,8 @@ import numpy as np
 import sys
 
 ######### 运动学超参数 #########
-K_W = 4
-K_V = 8
+K_W = 5
+K_V = 4
 S = 6
 PZBJ = 4#碰撞半径，当机器人距离小于这个值时触发规避
 PZGB_w1 = 60/180*np.pi
