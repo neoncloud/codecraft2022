@@ -40,14 +40,14 @@ class Scheduler:
             target_candidate = list(filter(lambda w: s.type_id not in self.map.workbenches[w].material_state+self.map.workbenches[w].assigned_sell, target_candidate))
             target_candidate = np.array(target_candidate)
             if len(target_candidate)>0:
-                dist = self.map.workbench_adj_mat[s.index, target_candidate]
-                # 找最近的一个工作台
                 if s.index in (1,2,3):
                     task_list = tier_3
                 if s.index in (4,5,6):
                     task_list = tier_2
                 else:
                     task_list = tier_1
+                dist = self.map.workbench_adj_mat[s.index, target_candidate]
+                # 找最近的一个工作台
                 task_list.append([s.index, target_candidate[np.argmin(dist)]])
         self.tier_1 = np.array(tier_1)
         self.tier_2 = np.array(tier_2)
@@ -63,14 +63,15 @@ class Scheduler:
                 return
             dists = list(map(lambda r: np.linalg.norm(self.map.wb_coord[tier[:,0]] - r.coord, axis=-1), self.map.robots)) # 计算机器人与各个任务起点的距离
             dists = np.stack(dists, axis=-1)
-            dists = self.pad_to_4(dists)
+            print(dists.shape, file=sys.stderr)
+            if len(tier) != 4:
+                dists = self.pad_to_4(dists)
             assignment = linear_sum_assignment(dists)[0]
             assignment = assignment[:self.map.num_robots]
-            print(assignment, file=sys.stderr)
             for r in free_robots:
                 if r.index >= len(tier): # 刚好分配了一个虚任务，就别干了
                     continue
-                task = tier[assignment][r.index]
+                task = tier[assignment[assignment<len(tier)]][r.index]
                 self.map.workbenches[task[0]].assigned_buy = True
                 if self.wb_id_to_type[task[1]] not in (8,9): # 8 号和 9号只进不产
                     # 给对应工作台注册一个即将进来的工件种类
