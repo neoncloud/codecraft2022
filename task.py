@@ -47,6 +47,7 @@ class Scheduler:
         assignment = linear_sum_assignment(dists)[0]
         list(map(lambda t,r: setattr(r, 'task', t), self.tasks[assignment], free_robots)) # 根据分配重排任务列表，并分配到机器人上
         list(map(lambda t,r: setattr(r, 'task_coord', t), self.wb_coord[self.tasks[assignment]], free_robots))
+        return assignment
     
     def init_task(self):
         source = list(filter(lambda x: self.map.workbenches[x].type_id in (1,2,3), range(self.map.num_workbenches)))    # 找到所有完成生产的工作台

@@ -15,7 +15,7 @@ def read_until_ok():
 
 def print_stdin_and_stderr(s):
     print(s, file=sys.stdout)
-    print(s, file=sys.stderr)
+    # print(s, file=sys.stderr)
 
 if __name__ == '__main__':
     read_until_ok() # 不需要读地图，第一帧就能读到全部数据
@@ -25,8 +25,10 @@ if __name__ == '__main__':
     #     f.write(init_frame)
     map_obj = parse_init_frame(init_frame)
     scheduler = Scheduler(map_obj)
-    scheduler.init_task()
-    scheduler.dispatch()
+    init_task = scheduler.init_task()
+    print(init_task, file=sys.stderr)
+    init_dispatch = scheduler.dispatch()
+    print(init_dispatch, file=sys.stderr)
     print_stdin_and_stderr(map_obj.output())
     try:
         while True:
