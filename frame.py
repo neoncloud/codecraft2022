@@ -3,7 +3,8 @@ import numpy as np
 import sys
 
 ######### 运动学超参数 #########
-K_W = 2 ## 正常转向时
+K_W = 4 ## 正常转向时
+K_W2 = 10 ##墙壁周围转向时
 K_V = 4
 S = 6
 PZBJ = 4#碰撞半径，当机器人距离小于这个值时触发规避
@@ -11,7 +12,7 @@ PZBJ = 4#碰撞半径，当机器人距离小于这个值时触发规避
 PZGB_w = 60/180*np.pi
 # PZGB_w2 = 15/180*np.pi
 PZGB_v = 1
-WALL = 0.3
+WALL_dis = 2.5
 
 class Workbench:
     def __init__(self, type_id: int, x: float, y: float, remaining_time: int, material_state: int, product_state: bool, index:int):
@@ -66,24 +67,34 @@ class Robot:
             self.task_coord = None
     
     def get_action(self, adj_mat:np.ndarray, headin_glist:np.ndarray, robot_coord:np.ndarray):
-        def w_v_fun(delta_dir:np.ndarray, distance:np.ndarray):
-            w = K_W * delta_dir
-            v = np.minimum(distance,S)
+        print('adj_mat=',adj_mat,'self.coord=',self.coord,'headin_glist=',headin_glist, 'robot_coord=', robot_coord, file=sys.stderr)
+        
+        def w_v_fun(delta_dir:np.ndarray, distance:np.ndarray, task:np.ndarray):
+            if task[0] < WALL_dis or task[1] < WALL_dis or (50-task[1]) < WALL_dis or (50-task[0]) < WALL_dis:
+                w = K_W2 * delta_dir
+                v = np.minimum(distance,S)
+            else:
+                w = K_W * delta_dir
+                v = S
             v = K_V*(1-(np.absolute(w)/np.pi))*v
             return w, v
         
         def get_w_v(task:np.ndarray):
+            ##判断task是否接近墙
             tar_cur_dir = task-self.coord
             distance = np.linalg.norm(tar_cur_dir, axis=-1)
             tar_dir = np.arctan2(tar_cur_dir[1], tar_cur_dir[0]) # 每帧更新
             delta_dir = tar_dir - self.heading
-            if delta_dir > np.pi: 
+            if delta_dir > np.pi:
                 delta_dir -= 2*np.pi
             elif delta_dir < -np.pi:
                 delta_dir += 2*np.pi
-            return w_v_fun(delta_dir = delta_dir, distance = distance)
+            return w_v_fun(delta_dir = delta_dir, distance = distance, task = task)
         
         sell, buy, destroy = False, False, False
+        ##判断是否接近墙
+        # if self.coord[0] < WALL_dis or self.coord[1] < WALL_dis or (50-self.coord[1]) < WALL_dis or (50-self.coord[0]) < WALL_dis:
+        #     v = 0.1
         if self.task_coord is None:
             w, v = 0, 0
         else:
@@ -95,11 +106,11 @@ class Robot:
                 if self.workbench_id == self.task[1]:
                     sell = True
                 w,v = get_w_v(self.task_coord[1,:])
-            
+        
             #####防碰撞
             min_index = np.where(adj_mat[self.index] != 0)[0].min()  # 找到距离最小的
             min_dis = adj_mat[self.index][min_index]
-            if min_dis <= PZBJ: # 若最近的机器人距离小于碰撞半径，触发防碰撞
+            if  self.carrying_item != 0 and min_dis <= PZBJ: # 若最近的机器人距离小于碰撞半径，触发防碰撞
                 duifang_head = headin_glist[min_index]
                 del_dir = duifang_head - self.heading
                 if del_dir > np.pi:
@@ -107,14 +118,14 @@ class Robot:
                 elif del_dir < -np.pi:
                     del_dir += 2*np.pi
                 if np.abs(del_dir) < 0.5*np.pi:
-                    if self.index < min_index:
+                    # if self.index < min_index:
+                    if self.coord[1] >= robot_coord[min_index][0]:
+                        # print('self.coord[1]=',self.coord[1],'robot_coord[min_index][1]=',robot_coord[min_index][0], file=sys.stderr)
                         v = v * ((min_dis-1.5)/PZBJ)
                 else:
                     # w -= K_W*PZGB_w ## PZGB_w希望可以动态调整
                     w -= (1-(min_dis-3/PZBJ)) * PZGB_w
-            ###防撞墙
-            # if self.coord[0] < WALL or self.coord[1] < WALL or (50-self.coord[1]) < WALL or (50-self.coord[0]) < WALL:
-            #     v = 0.1
+                    
         return sell, buy, destroy, w, v
 
 class Map:
