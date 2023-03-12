@@ -23,6 +23,8 @@ class Workbench:
         self.material_state = [j for j, bit in enumerate(
             reversed(bin(int(material_state))[2:])) if bit == "1"]
         self.product_state = product_state
+        self.assigned_buy = False
+        self.assigned_sell = []
 
     def update(self, remaining_time:int=None, material_state:int=None, product_state:bool=None):
         self.remaining_time = remaining_time
@@ -61,10 +63,6 @@ class Robot:
         self.linear_velocity = np.array([linear_velocity_x, linear_velocity_y])
         self.heading = heading
         self.coord = np.array([x, y])
-        if self.workbench_id == self.task[1] and self.carrying_item==0:
-            # 位于任务末端，且卖完了东西，则清空任务
-            self.task = None
-            self.task_coord = None
     
     def get_action(self, adj_mat:np.ndarray, headin_glist:np.ndarray, robot_coord:np.ndarray):
         print('adj_mat=',adj_mat,'self.coord=',self.coord,'headin_glist=',headin_glist, 'robot_coord=', robot_coord, file=sys.stderr)
@@ -137,7 +135,8 @@ class Map:
         self.workbench_adj_mat = self._get_workbench_adj_mat() # 邻接矩阵
         self.robot_adj_mat = self._get_robot_adj_mat() # 邻接矩阵
         self.robot_heading = [r.heading for r in self.robots]
-        self.robot_coord = [r.coord for r in self.robots]
+        self.robot_coord = np.array([r.coord for r in self.robots])
+        self.wb_coord = np.array([w.coord for w in self.workbenches])
         self.num_robots = len(robots)
         self.num_workbenches = len(workbenches)
 
