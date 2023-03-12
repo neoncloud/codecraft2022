@@ -53,24 +53,19 @@ class Scheduler:
         return self.tasks
     
     def dispatch(self):
-        for tier in (self.tier_1, self.tier_2, self.tier_3):
-            if len(tier) == 0:
-                continue
-            free_robots = list(filter(lambda r: r.carrying_item == 0 and r.task_coord is None, self.map.robots)) # 选择空闲机器人
-            if len(free_robots) == 0:
-                return
-            dists = list(map(lambda r: np.linalg.norm(self.wb_coord[tier[:,0]] - r.coord, axis=-1), self.map.robots)) # 计算机器人与各个任务起点的距离
-            dists = np.stack(dists, axis=-1)
-            dists = self.pad_to_4(dists)
-            assignment = linear_sum_assignment(dists)[0]
-            assignment = assignment[:self.map.num_robots]
-            print(assignment, file=sys.stderr)
-            for r in free_robots:
-                if r.index >= len(tier): # 刚好分配了一个虚任务，就别干了
-                    continue
-                self.ongoing_task[r.index] = tier[assignment][r.index]
-                r.task = tier[assignment][r.index]
-                r.task_coord = self.wb_coord[tier[assignment]][r.index]
+        free_robots = list(filter(lambda r: r.carrying_item == 0 and r.task_coord is None, self.map.robots)) # 选择空闲机器人
+        dists = list(map(lambda r: np.linalg.norm(self.wb_coord[self.tasks[:,0]] - r.coord, axis=-1), self.map.robots)) # 计算机器人与各个任务起点的距离
+        # if len(dists) == 0:
+        #     return
+        dists = np.stack(dists, axis=-1)
+        assignment = linear_sum_assignment(dists)[0]
+        print(assignment, file=sys.stderr)
+        assignment = assignment[:self.map.num_robots]
+        for r in free_robots:
+            self.ongoing_task[r.index] = self.tasks[assignment][r.index]
+            r.task = self.tasks[assignment][r.index]
+            r.task_coord = self.wb_coord[self.tasks[assignment]][r.index]
+        return assignment
     
     def init_task(self):
         source = list(filter(lambda w: w.type_id in (1,2,3), self.map.workbenches))
