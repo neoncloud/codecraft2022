@@ -3,9 +3,13 @@ import numpy as np
 import sys
 
 ######### 运动学超参数 #########
-K_W = 10
-K_V = 5
+K_W = 5
+K_V = 4
 S = 6
+PZBJ = 6#碰撞半径，当机器人距离小于这个值时触发规避
+PZGB_w1 = 60/180*np.pi
+PZGB_w2 = 20/180*np.pi
+PZGB_v = 1
 
 class Workbench:
     def __init__(self, type_id: int, x: float, y: float, remaining_time: int, material_state: int, product_state: bool):
@@ -58,7 +62,7 @@ class Robot:
             self.task = None
             self.task_coord = None
     
-    def get_action(self, adj_mat:np.ndarray, heading_list:np.ndarray):
+    def get_action(self, adj_mat:np.ndarray, headin_glist:np.ndarray):
         def w_v_fun(delta_dir:np.ndarray, distance:np.ndarray):
             w = K_W * delta_dir
             v = np.minimum(distance,S)
@@ -86,6 +90,25 @@ class Robot:
                 if self.workbench_id == self.task[1]:
                     sell = True
                 w,v = get_w_v(self.task_coord[1,:])
+            min_index = np.where(adj_mat[self.index] != 0)[0].min()
+            if adj_mat[self.index][min_index] <= PZBJ:
+                headin_duifang = (2*np.pi - headin_glist[min_index]) % (2*np.pi) if headin_glist[min_index] < 0 else headin_glist[min_index]
+                headin_ziji = (2*np.pi - headin_glist[self.index]) % (2*np.pi) if headin_glist[self.index] < 0 else headin_glist[self.index]
+                angle = np.abs(headin_duifang - headin_ziji)
+                if angle > 120/180*np.pi:
+                    if headin_ziji > headin_duifang: 
+                        w -= (PZBJ-adj_mat[self.index][min_index])*PZGB_w1
+                    else:
+                        w -= (PZBJ-adj_mat[self.index][min_index])*PZGB_w1
+                else:
+                    if headin_ziji > headin_duifang:
+                        w += (PZBJ-adj_mat[self.index][min_index])*PZGB_w2
+                    else:
+                        w -= (PZBJ-adj_mat[self.index][min_index])*PZGB_w2
+            if adj_mat[self.index][min_index] <= 1.5:
+                v = -2
+            if  w > np.pi:
+                w = 2*np.pi - w
         return sell, buy, destroy, w, v
 
 class Map:
