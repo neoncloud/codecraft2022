@@ -29,12 +29,11 @@ class Scheduler:
         # 每个工作台到最近的一个机器人所需时间
         robot_to_wb_dist = np.linalg.norm(self.map.robot_coord[:, None]-self.map.wb_coord[None, :], 2, -1).min(0)/6.0
         # 选择机器人赶过去能恰好赶上的工作台 且 没有被分配
-        source = list(filter(lambda w: w.remaining_time <= robot_to_wb_dist[w.index] and w.remaining_time>=0 and not w.assigned_buy, self.map.workbenches))
+        source = list(filter(lambda w: ((w.remaining_time <= robot_to_wb_dist[w.index] and w.remaining_time>0) or w.product_state) and not w.assigned_buy, self.map.workbenches))
         # if self.map.frame_num >=8000:
         #     source = list(filter(lambda w: w.type_id in (1,2,3), source))
         if len(source) == 0:
             return
-
         tier_1,tier_2,tier_3 = [],[],[]
         for s in source:
             # 查找所有可能的目标
@@ -75,7 +74,7 @@ class Scheduler:
                 dist = self.map.workbench_adj_mat[s.index, target_candidate]
                 # 找最近的一个工作台
                 all_task.append([[s.index, target_candidate[np.argmin(dist)]]])
-        self.tier_1 = all_task
+        self.tier_3 = all_task
 
     def dispatch(self):
         for tier in (self.tier_1, self.tier_2, self.tier_3):
@@ -114,7 +113,6 @@ class Scheduler:
                 r.task_coord = self.map.wb_coord[task]
                 r.buy_done = False
                 r.sell_done = False
-                r.destroy = False
 
     def clear_ongoing(self):
         for r in self.map.robots:
@@ -124,40 +122,56 @@ class Scheduler:
                 if r.carrying_item != 0: #成功买到
                     src.assigned_buy = False
                 else:
-                    r.buy_done = False
-                    r.sell_done = False
-            if r.sell_done:
-                if src.type_id in tgt.assigned_sell:
-                    tgt.assigned_sell.remove(src.type_id)
-                if r.carrying_item == 0:
-                    r.freezed = 0
-                    r.destroy = False
-                    continue
-                # 没卖成功
-                print("freezed", file=sys.stderr)
-                r.freezed += 1
-                if r.freezed >= 5:
-                    # 几次都卖不出去，还没有接收目标就直接销毁
-                    r.destroy = True
+                    r.buy_done = True
                     r.sell_done = True
-                    r.freezed = 0
-                    continue
-                target_candidate = self.rule[r.carrying_item]
-                target_candidate = [self.wb_type_to_id[tgt] for tgt in target_candidate]
-                target_candidate = list(filter(lambda w: r.carrying_item not in self.map.workbenches[w].material_state+self.map.workbenches[w].assigned_sell, itertools.chain(*target_candidate)))
-                if len(target_candidate) == 0:
-                    continue
-                # 分配一个最近的可用目标
-                target_candidate = np.array(target_candidate)
-                dist = np.linalg.norm(self.map.wb_coord[target_candidate] - r.coord, axis=-1)
-                new_target = target_candidate[np.argmin(dist)]
-                r.task[1] = new_target
-                r.sell_done = False
-                r.destroy = False
-                r.task_coord[1] = self.map.wb_coord[new_target]
-                if self.wb_id_to_type[new_target] not in (8,9):
-                    # 给对应工作台注册一个即将进来的工件种类
-                    self.map.workbenches[new_target].assigned_sell.append(r.carrying_item)
+            if r.sell_done:
+                if r.carrying_item == 0:
+                    r.sell_done = True
+                    if tgt.type_id not in (8,9):
+                        # try:
+                        if src.type_id in tgt.assigned_sell:
+                            tgt.assigned_sell.remove(src.type_id)
+                        elif src.type_id in tgt.material_state:
+                            continue
+                        # except:
+                        #     print(f"remove {src.type_id} from {tgt.index} failed, assigned sell {tgt.assigned_sell}, type {tgt.type_id}, mat_state {tgt.material_state}", file=sys.stderr)
+                        #     raise
+                else:
+                    target_candidate = self.rule[r.carrying_item]
+                    target_candidate = [self.wb_type_to_id[tgt] for tgt in target_candidate]
+                    target_candidate = list(filter(lambda w: r.carrying_item not in self.map.workbenches[w].material_state+self.map.workbenches[w].assigned_sell, itertools.chain(*target_candidate)))
+                    if len(target_candidate) == 0:
+                        continue
+                    # 分配一个最近的可用目标
+                    target_candidate = np.array(target_candidate)
+                    dist = np.linalg.norm(self.map.wb_coord[target_candidate] - r.coord, axis=-1)
+                    new_target = target_candidate[np.argmin(dist)]
+                    r.task[0] = self.wb_type_to_id[r.carrying_item][0]
+                    r.task[1] = new_target
+                    r.task_coord[1] = self.map.wb_coord[new_target]
+                    r.sell_done = False
+                    if self.wb_id_to_type[new_target] not in (8,9):
+                        # 给对应工作台注册一个即将进来的工件种类
+                        self.map.workbenches[new_target].assigned_sell.append(r.carrying_item)
+
+                # if tgt.type_id not in (8,9):
+                #     if src.type_id in tgt.assigned_sell:
+                #         tgt.assigned_sell.remove(src.type_id)
+                #     elif r.carrying_item!=0: # 异常，要卖但是这个工作台没分配
+                # if r.carrying_item == 0:
+                #     r.freezed = 0
+                #     r.destroy = False
+                #     continue
+                # # 没卖成功
+                # print("freezed", file=sys.stderr)
+                # r.freezed += 1
+                # if r.freezed >= 5:
+                #     # 几次都卖不出去，还没有接收目标就直接销毁
+                #     r.destroy = True
+                #     r.sell_done = True
+                #     r.buy_done = True
+                #     r.freezed = 0
+                #     continue
 
     def pad_to_4(self, mat):
         """

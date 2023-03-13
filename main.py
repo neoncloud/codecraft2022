@@ -26,8 +26,8 @@ if __name__ == '__main__':
     map_obj = parse_init_frame(init_frame)
     scheduler = Scheduler(map_obj)
     init_task = scheduler.init_task()
-    print(init_task, file=sys.stderr)
     scheduler.dispatch()
+    scheduler.clear_ongoing()
     print_stdin_and_stderr(map_obj.output())
     try:
         while True:
