@@ -22,15 +22,22 @@ import sys
 # KW = 10 # 超参数
 # KV = 1 # 超参数
 
-k_att = 20.0 # 表示机器人与目标之间的引力常数
-obs_k_rep = 600.0 # 表示机器人与障碍物之间的斥力常数
-bound_k_rep = 500.0 # 表示机器人与边界之间的斥力常数
-obs_rep_range = 30.0 # 表示障碍物斥力的作用范围
-bound_rep_range = 2.0 # 表示边界斥力的作用范围
-targe_att_range =5.0 # 表示目的地的引力作用范围
-KW =2.5 # 超参数
-KV = 1.2 # 超参数
-
+# k_att = 20.0 # 表示机器人与目标之间的引力常数
+# obs_k_rep = 600.0 # 表示机器人与障碍物之间的斥力常数
+# bound_k_rep = 500.0 # 表示机器人与边界之间的斥力常数
+# obs_rep_range = 30.0 # 表示障碍物斥力的作用范围
+# bound_rep_range = 2.0 # 表示边界斥力的作用范围
+# targe_att_range =5.0 # 表示目的地的引力作用范围
+# KW =2.5 # 超参数
+# KV = 1.2 # 超参数
+k_att = 10.0 # 表示机器人与目标之间的引力常数
+obs_k_rep = 400.0 # 表示机器人与障碍物之间的斥力常数
+bound_k_rep = 2000.0 # 表示机器人与边界之间的斥力常数
+obs_rep_range = 20.0 # 表示障碍物斥力的作用范围
+bound_rep_range = 1.5 # 表示边界斥力的作用范围
+targe_att_range =4.0 # 表示目的地的引力作用范围
+KW =4 # 超参数
+KV = 1.3 # 超参数
 
 class Workbench:
     def __init__(self, type_id: int, x: float, y: float, remaining_time: int, material_state: int, product_state: bool, index:int):
@@ -65,6 +72,7 @@ class Robot:
         self.coord = np.array([x, y])
         self.task = None
         self.task_coord = None #用于存每次的任务 该robot要去买的坐标|该robot要去卖的坐标
+        self.last_carry = 0
         self.buy_done = True
         self.sell_done = True
         self.freezed = 0
@@ -116,7 +124,7 @@ class Robot:
             if tar_d > targe_att_range:
                 att = k_att * (self.task_coord[task_index,:] - self.coord) * tar_d
             else:
-                att = k_att * targe_att_range**3 * (self.task_coord[task_index,:] - self.coord)
+                att = k_att * targe_att_range**6 * (self.task_coord[task_index,:] - self.coord)
             
             # att = k_att * (self.task_coord[task_index,:] - self.coord) # 计算机器人当前位置和目标位置之间的引力
             
@@ -126,10 +134,10 @@ class Robot:
                 obs_vec = np.float64(self.coord - np.array(obs))
                 obs_d = np.float64(np.linalg.norm(obs_vec))
                 if obs_d <= obs_rep_range:
-                    # obs_rep += obs_k_rep * (1/obs_d - 1/obs_rep_range) * (1/obs_d**2) * obs_vec / obs_d
+                    obs_rep += -obs_k_rep * (1/obs_d - 1/obs_rep_range) * (1/obs_d**2) * obs_vec / obs_d
                     # obs_rep += obs_k_rep * (1/obs_d - 1/obs_rep_range) * (1/obs_d**2) * obs_vec
-                    obs_rep += obs_k_rep * (1/obs_d - 1/obs_rep_range) * (1/obs_d**2) * obs_vec  / obs_d
-                    
+                    # obs_rep += obs_k_rep * (1/obs_d - 1/obs_rep_range) * (1/obs_d**2) * obs_vec  / obs_d
+
             # 添加地图边界限制条件
             boundary_rep = np.float64(np.array([0, 0]))
             if self.coord[0] < bound_rep_range:
@@ -155,16 +163,39 @@ class Robot:
                 delta_dir += 2*np.pi
             
             # if np.abs(delta_dir) >= np.pi: print('delta_dir2大于pi',delta_dir, file=sys.stderr)
-            
+            if np.abs(delta_dir) > 0.6 * np.pi or self.last_carry != self.carrying_item:
+            # if self.last_carry != self.carrying_item:
+                print('触发', file=sys.stderr)
+                if self.coord[1] > 50 - bound_rep_range:
+                    if self.heading > 0 and self.heading <= 0.5*np.pi and delta_dir > 0:
+                        delta_dir = delta_dir - 2 * np.pi
+                    elif self.heading > 0.5 * np.pi and self.heading < np.pi and delta_dir < 0:
+                        delta_dir = 2 * np.pi + delta_dir
+                elif self.coord[1] < bound_rep_range:
+                    if self.heading < 0 and self.heading >= -0.5*np.pi and delta_dir < 0:
+                        delta_dir = 2 * np.pi + delta_dir
+                    elif self.heading < -0.5*np.pi and self.heading > -np.pi and delta_dir > 0:
+                        delta_dir = delta_dir - 2 * np.pi
+                elif self.coord[0] < bound_rep_range:
+                    if self.heading < np.pi and self.heading >= 0.5*np.pi and delta_dir > 0:
+                        delta_dir = delta_dir - 2 * np.pi
+                    elif self.heading > -np.pi and self.heading <= -0.5*np.pi and delta_dir < 0:
+                        delta_dir = 2 * np.pi + delta_dir
+                elif self.coord[0] > 50 - bound_rep_range:
+                    if self.heading > 0 and self.heading <= 0.5*np.pi and delta_dir < 0:
+                        delta_dir = 2 * np.pi + delta_dir
+                    elif self.heading < 0 and self.heading >= -0.5*np.pi and delta_dir > 0:
+                        delta_dir = delta_dir - 2 * np.pi
+                    
             w = KW * delta_dir
 
             tar_cur_dir = self.task_coord[task_index,:]-self.coord
             distance = np.linalg.norm(tar_cur_dir, axis=-1)
-            v = np.minimum(distance+2.5,6)
+            v = np.minimum(distance+2,6)
             v = KV*(1-(np.absolute(delta_dir)/np.pi))*v
             # v = KV*np.linalg.norm(new_vel)
-            print('w=',w,'v=',v, file=sys.stderr)
-            
+            # print('w=',w,'v=',v, file=sys.stderr)
+            self.last_carry = self.carrying_item
             return w, v
         
         sell, buy, destroy = False, False, self.destroy
