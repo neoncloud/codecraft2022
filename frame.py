@@ -47,11 +47,11 @@ class Robot:
         self.coord = np.array([x, y])
         self.task = None
         self.task_coord = None #用于存每次的任务 该robot要去买的坐标|该robot要去卖的坐标
-        # self.behav_buy = False
-        # self.behav_sale = False
-        # self.behav_destroy = False
-        # self.behav_w = 0
-        # self.behav_v = 0
+        self.buy_done = True
+        self.sell_done = True
+        self.freezed = 0
+        self.destroy = False
+
         
     def update(self, workbench_id:int=None, carrying_item:int=None, time_value_coeff:float=None, collision_value_coeff:float=None,
                angular_velocity:float=None, linear_velocity_x: float=None, linear_velocity_y: float=None, heading:float=None, x:float=None, y:float=None):
@@ -63,10 +63,9 @@ class Robot:
         self.linear_velocity = np.array([linear_velocity_x, linear_velocity_y])
         self.heading = heading
         self.coord = np.array([x, y])
+        self.destroy = False
     
-    def get_action(self, adj_mat:np.ndarray, headin_glist:np.ndarray, robot_coord:np.ndarray):
-        print('adj_mat=',adj_mat,'self.coord=',self.coord,'headin_glist=',headin_glist, 'robot_coord=', robot_coord, file=sys.stderr)
-        
+    def get_action(self, adj_mat:np.ndarray, headin_glist:np.ndarray, robot_coord:np.ndarray): 
         def w_v_fun(delta_dir:np.ndarray, distance:np.ndarray, task:np.ndarray):
             if task[0] < WALL_dis or task[1] < WALL_dis or (50-task[1]) < WALL_dis or (50-task[0]) < WALL_dis:
                 w = K_W2 * delta_dir
@@ -89,20 +88,22 @@ class Robot:
                 delta_dir += 2*np.pi
             return w_v_fun(delta_dir = delta_dir, distance = distance, task = task)
         
-        sell, buy, destroy = False, False, False
+        sell, buy, destroy = False, False, self.destroy
         ##判断是否接近墙
         # if self.coord[0] < WALL_dis or self.coord[1] < WALL_dis or (50-self.coord[1]) < WALL_dis or (50-self.coord[0]) < WALL_dis:
         #     v = 0.1
         if self.task_coord is None:
             w, v = 0, 0
         else:
-            if self.carrying_item == 0:
+            if not self.buy_done:
                 if self.workbench_id == self.task[0]:
                     buy = True
+                    self.buy_done = True
                 w,v = get_w_v(self.task_coord[0,:])
             else:
                 if self.workbench_id == self.task[1]:
                     sell = True
+                    self.sell_done = True
                 w,v = get_w_v(self.task_coord[1,:])
         
             #####防碰撞

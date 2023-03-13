@@ -1,6 +1,7 @@
 import numpy as np
 from frame import Map
 import sys
+import itertools
 
 class Scheduler:
     def __init__(self, map_obj:Map) -> None:
@@ -26,9 +27,11 @@ class Scheduler:
 
     def get_all_task(self):
         # 每个工作台到最近的一个机器人所需时间
-        robot_to_wb_dist = np.linalg.norm(self.map.robot_coord[:, None]-self.map.wb_coord[None, :], 2, -1).min(0)/6.0 
+        robot_to_wb_dist = np.linalg.norm(self.map.robot_coord[:, None]-self.map.wb_coord[None, :], 2, -1).min(0)/6.0
         # 选择机器人赶过去能恰好赶上的工作台 且 没有被分配
         source = list(filter(lambda w: w.remaining_time <= robot_to_wb_dist[w.index] and w.remaining_time>=0 and not w.assigned_buy, self.map.workbenches))
+        # if self.map.frame_num >=8000:
+        #     source = list(filter(lambda w: w.type_id in (1,2,3), source))
         if len(source) == 0:
             return
 
@@ -40,44 +43,24 @@ class Scheduler:
             target_candidate = list(filter(lambda w: s.type_id not in self.map.workbenches[w].material_state+self.map.workbenches[w].assigned_sell, target_candidate))
             target_candidate = np.array(target_candidate)
             if len(target_candidate)>0:
-                if s.index in (1,2,3):
-                    task_list = tier_3
-                if s.index in (4,5,6):
-                    task_list = tier_2
-                else:
-                    task_list = tier_1
                 dist = self.map.workbench_adj_mat[s.index, target_candidate]
-                # 找最近的一个工作台
-                task_list.append([s.index, target_candidate[np.argmin(dist)]])
-        self.tier_1 = np.array(tier_1)
-        self.tier_2 = np.array(tier_2)
-        self.tier_3 = np.array(tier_3)
+                # 找最近的5个工作台 a[np.argpartition(a, -5)[-5:]]
+                # TODO 将这里的 dist 加入优先级权重，例如工作台的缺件情况
+                if len(dist)>5:
+                    top_5 = target_candidate[np.argpartition(dist, 5)[:5]]
+                    task = np.stack((np.repeat(s.index, 5), top_5), axis=-1)
+                else:
+                    task = np.array([[s.index, target_candidate[np.argmin(dist)]]])
+                if s.type_id in (7,):
+                    tier_1.append(task)
+                elif s.type_id in (6,5,4):
+                    tier_2.append(task)
+                else:
+                    tier_3.append(task)
+        self.tier_1 = tier_1
+        self.tier_2 = tier_2
+        self.tier_3 = tier_3
         return self.tasks
-    
-    def dispatch(self):
-        for tier in (self.tier_1, self.tier_2, self.tier_3):
-            if len(tier) == 0:
-                continue
-            free_robots = list(filter(lambda r: r.carrying_item == 0 and r.task_coord is None, self.map.robots)) # 选择空闲机器人
-            if len(free_robots) == 0:
-                return
-            dists = list(map(lambda r: np.linalg.norm(self.map.wb_coord[tier[:,0]] - r.coord, axis=-1), self.map.robots)) # 计算机器人与各个任务起点的距离
-            dists = np.stack(dists, axis=-1)
-            print(dists.shape, file=sys.stderr)
-            if len(tier) != 4:
-                dists = self.pad_to_4(dists)
-            assignment = linear_sum_assignment(dists)[0]
-            assignment = assignment[:self.map.num_robots]
-            for r in free_robots:
-                if r.index >= len(tier): # 刚好分配了一个虚任务，就别干了
-                    continue
-                task = tier[assignment[assignment<len(tier)]][r.index]
-                self.map.workbenches[task[0]].assigned_buy = True
-                if self.wb_id_to_type[task[1]] not in (8,9): # 8 号和 9号只进不产
-                    # 给对应工作台注册一个即将进来的工件种类
-                    self.map.workbenches[task[1]].assigned_sell.append(self.wb_id_to_type[task[0]])
-                r.task = task
-                r.task_coord = self.map.wb_coord[task]
     
     def init_task(self):
         source = list(filter(lambda w: w.type_id in (1,2,3), self.map.workbenches))
@@ -91,31 +74,90 @@ class Scheduler:
             if len(target_candidate)>0:
                 dist = self.map.workbench_adj_mat[s.index, target_candidate]
                 # 找最近的一个工作台
-                all_task.append([s.index, target_candidate[np.argmin(dist)]])
-        self.tier_1 = np.array(all_task)
-    
+                all_task.append([[s.index, target_candidate[np.argmin(dist)]]])
+        self.tier_1 = all_task
+
+    def dispatch(self):
+        for tier in (self.tier_1, self.tier_2, self.tier_3):
+            if len(tier) == 0:
+                continue
+            tier = np.concatenate(tier, axis=0)
+            
+            # 选择空闲机器人
+            # print(tier, file=sys.stderr)
+            free_robots = list(filter(lambda r: r.carrying_item == 0 and r.buy_done and r.sell_done , self.map.robots))
+            if len(free_robots) == 0:
+                return
+
+            # 计算机器人与各个任务起点的距离
+            dists = list(map(lambda r: np.linalg.norm(self.map.wb_coord[tier[:,0]] - r.coord, axis=-1), free_robots)) 
+            dists = np.stack(dists, axis=-1)
+
+            # if len(tier) != 4:
+            #     dists = self.pad_to_4(dists)
+            # 任务分派，使用匈牙利算法
+            assignment = linear_sum_assignment(dists)[0]
+            assignment = assignment[:len(free_robots)]
+            # print(assignment, file=sys.stderr)
+            task_sorted = tier[assignment]
+
+            for i,r in enumerate(free_robots):
+                if i >= len(tier): # 刚好分配了一个虚任务，就别干了
+                    continue
+                task = task_sorted[i]
+                self.map.workbenches[task[0]].assigned_buy = True
+                # 给对应工作台注册一个即将进来的工件种类
+                if self.wb_id_to_type[task[1]] not in (8,9):
+                    # 8 号和 9号只进不产
+                    self.map.workbenches[task[1]].assigned_sell.append(self.wb_id_to_type[task[0]])
+                r.task = task
+                r.task_coord = self.map.wb_coord[task]
+                r.buy_done = False
+                r.sell_done = False
+                r.destroy = False
+
     def clear_ongoing(self):
         for r in self.map.robots:
-            if r.task is None:
-                continue
-            if r.workbench_id == r.task[1] and r.carrying_item==0:
-            # 位于任务末端，且卖完了东西，则清空任务
-                self.map.workbenches[r.task[0]].assigned_buy = False
-                self.map.workbenches[r.task[1]].assigned_sell = []
-                r.task_coord = None
-                r.task = None
-    
-    def save_dead_robot(self):
-        for r in self.map.robots: # 发生冲突，到了但是卖不了
-            if r.workbench_id == r.task[1] and r.carrying_item!=0:
-                target_candidate = self.src_to_tgt[r.carrying_item]
-                # 过滤掉没空位的 和 已经被分配的
-                target_candidate = list(filter(lambda w: r.carrying_item not in self.map.workbenches[w].material_state+self.map.workbenches[w].assigned_sell, target_candidate))
-                dist = self.map.workbench_adj_mat[r.task[1], target_candidate]
-                target = target_candidate[np.argmin(dist)]
-                r.task[1] = target
-                r.task_coord[1] = self.map.wb_coord[target]
-
+            src = self.map.workbenches[r.task[0]]
+            tgt = self.map.workbenches[r.task[1]]
+            if r.buy_done:
+                if r.carrying_item != 0: #成功买到
+                    src.assigned_buy = False
+                else:
+                    r.buy_done = False
+                    r.sell_done = False
+            if r.sell_done:
+                if src.type_id in tgt.assigned_sell:
+                    tgt.assigned_sell.remove(src.type_id)
+                if r.carrying_item == 0:
+                    r.freezed = 0
+                    r.destroy = False
+                    continue
+                # 没卖成功
+                print("freezed", file=sys.stderr)
+                r.freezed += 1
+                if r.freezed >= 5:
+                    # 几次都卖不出去，还没有接收目标就直接销毁
+                    r.destroy = True
+                    r.sell_done = True
+                    r.freezed = 0
+                    continue
+                target_candidate = self.rule[r.carrying_item]
+                target_candidate = [self.wb_type_to_id[tgt] for tgt in target_candidate]
+                target_candidate = list(filter(lambda w: r.carrying_item not in self.map.workbenches[w].material_state+self.map.workbenches[w].assigned_sell, itertools.chain(*target_candidate)))
+                if len(target_candidate) == 0:
+                    continue
+                # 分配一个最近的可用目标
+                target_candidate = np.array(target_candidate)
+                dist = np.linalg.norm(self.map.wb_coord[target_candidate] - r.coord, axis=-1)
+                new_target = target_candidate[np.argmin(dist)]
+                r.task[1] = new_target
+                r.sell_done = False
+                r.destroy = False
+                r.task_coord[1] = self.map.wb_coord[new_target]
+                if self.wb_id_to_type[new_target] not in (8,9):
+                    # 给对应工作台注册一个即将进来的工件种类
+                    self.map.workbenches[new_target].assigned_sell.append(r.carrying_item)
 
     def pad_to_4(self, mat):
         """
