@@ -30,14 +30,14 @@ import sys
 # targe_att_range =5.0 # 表示目的地的引力作用范围
 # KW =2.5 # 超参数
 # KV = 1.2 # 超参数
-k_att = 10.0 # 表示机器人与目标之间的引力常数
-obs_k_rep = 400.0 # 表示机器人与障碍物之间的斥力常数
-bound_k_rep = 2000.0 # 表示机器人与边界之间的斥力常数
-obs_rep_range = 20.0 # 表示障碍物斥力的作用范围
-bound_rep_range = 1.5 # 表示边界斥力的作用范围
-targe_att_range =4.0 # 表示目的地的引力作用范围
-KW =4 # 超参数
-KV = 1.3 # 超参数
+k_att = 15.0 # 表示机器人与目标之间的引力常数
+obs_k_rep = 350.0 # 表示机器人与障碍物之间的斥力常数
+bound_k_rep = 2500.0 # 表示机器人与边界之间的斥力常数
+obs_rep_range = 28.0 # 表示障碍物斥力的作用范围
+bound_rep_range = 2.5 # 表示边界斥力的作用范围
+targe_att_range =6.0 # 表示目的地的引力作用范围
+KW = 8 # 超参数
+KV = 1.2 # 超参数
 
 class Workbench:
     def __init__(self, type_id: int, x: float, y: float, remaining_time: int, material_state: int, product_state: bool, index:int):
@@ -70,8 +70,8 @@ class Robot:
         self.linear_velocity = np.array([linear_velocity_x, linear_velocity_y])
         self.heading = heading
         self.coord = np.array([x, y])
-        self.task = None
-        self.task_coord = None #用于存每次的任务 该robot要去买的坐标|该robot要去卖的坐标
+        self.task = []
+        self.task_coord = [] #用于存每次的任务 该robot要去买的坐标|该robot要去卖的坐标
         self.last_carry = 0
         self.buy_done = True
         self.sell_done = True
@@ -165,7 +165,7 @@ class Robot:
             # if np.abs(delta_dir) >= np.pi: print('delta_dir2大于pi',delta_dir, file=sys.stderr)
             if np.abs(delta_dir) > 0.6 * np.pi or self.last_carry != self.carrying_item:
             # if self.last_carry != self.carrying_item:
-                print('触发', file=sys.stderr)
+                # print('触发', file=sys.stderr)
                 if self.coord[1] > 50 - bound_rep_range:
                     if self.heading > 0 and self.heading <= 0.5*np.pi and delta_dir > 0:
                         delta_dir = delta_dir - 2 * np.pi
@@ -206,12 +206,14 @@ class Robot:
             w, v = 0, 0
         else:
             if not self.buy_done:
-                if self.workbench_id == self.task[0]:
+                # if self.workbench_id == self.task[0]:
+                if self.workbench_id == self.task[0].workbench.index:
                     buy = True
                     self.buy_done = True
                 w,v = potential_field(self,task_index=0)
             else:
-                if self.workbench_id == self.task[1]:
+                # if self.workbench_id == self.task[1]:
+                if self.workbench_id == self.task[1].workbench.index:
                     sell = True
                     self.sell_done = True
                 w,v = potential_field(self,task_index=1)
@@ -300,7 +302,7 @@ class Map:
             output += f"forward {i} {v}\nrotate {i} {w}\n"
             if sell:
                 output += f"sell {i}\n"
-            if buy:
+            if buy and self.frame_num<=8700:
                 output += f"buy {i}\n"
             if destroy:
                 output += f"destroy {i}\n"
