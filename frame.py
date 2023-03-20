@@ -42,7 +42,7 @@ class Workbench:
             reversed(bin(int(material_state))[2:])) if bit == "1"]
         self.product_state = product_state
         self.assigned_buy = False  # 预约了购买
-        self.assigned_task = False # 预约了节点
+        # self.assigned_task = False # 预约了节点
         self.assigned_sell = []    # 预约了出售
 
     def update(self, remaining_time:int=None, material_state:int=None, product_state:bool=None):

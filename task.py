@@ -280,7 +280,9 @@ class Scheduler2:
             src.done = True
             if src.workbench.type_id not in (1,2,3):
                 src.workbench.assigned_buy = True
-            if dst.workbench.type_id not in (8,9):
+            if dst.workbench.type_id in (8,9):
+                dst.done = True
+            else:
                 dst.workbench.assigned_sell.append(src.workbench.type_id)
             print(f"Robot {r.index} buy {src.workbench.index},{src.workbench.type_id} sell to {dst.workbench.index},{dst.workbench.type_id}", file=sys.stderr)
 
