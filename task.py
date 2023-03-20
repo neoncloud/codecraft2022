@@ -206,7 +206,8 @@ class Scheduler2:
             if task is None:
                 return
             self.task_queue.put(task)
-        self.sub_tasks = sorted(avail_sub_tasks, key=lambda item: item[0].workbench.type_id, reverse=True) # 按从type_id从高到低排序
+        # avail_sub_tasks = list(filter(lambda task: task[0].workbench.type_id not in task[1].workbench.assigned_sell, avail_sub_tasks))
+        self.sub_tasks = avail_sub_tasks
             # self.update_sub_task()
 
     def update_robot(self):
@@ -223,13 +224,9 @@ class Scheduler2:
                 else:
                     r.buy_done = True
                     r.sell_done = True
-                # if np.linalg.norm(tgt_task.workbench.coord - r.coord, 2 ,-1) < 2.0: # 快要靠近时发生冲突，要卖的东西已经被人抢卖了
-                #     if r.carrying_item in tgt_task.workbench.material_state:
-                #         # 看看来的工件会不会导致工作台进行生产
-                #         incoming = set(tgt_task.workbench.material_state+tgt_task.workbench.assigned_sell)
-                #         require = set(dependency_dict[tgt_task.workbench.type_id])
-                #         if incoming != require:
-                #             self.reassign(r)
+                if np.linalg.norm(tgt_task.workbench.coord - r.coord, 2 ,-1) < 2.0: # 快要靠近时发生冲突，要卖的东西已经被人抢卖了
+                    if r.carrying_item in tgt_task.workbench.material_state:
+                        self.reassign(r)
             if r.sell_done:
                 if r.carrying_item == 0:
                     r.sell_done = True
@@ -239,19 +236,17 @@ class Scheduler2:
     def reassign(self, robot:Robot):
         carry_item = robot.carrying_item
         target_candidate = dependency_T[carry_item] # 找个新目标
-        target_candidate = flatten([self.wb_type_to_id[w] for w in target_candidate])
-        target_candidate = [self.map.workbenches[w] for w in target_candidate]
-        target_candidate = list(filter(lambda w: carry_item not in w.material_state and carry_item not in w.assigned_sell, target_candidate))
+        target_candidate = list(filter(lambda task: task[1].workbench.type_id in target_candidate, self.sub_tasks))
+        target_candidate = list(filter(lambda task: carry_item not in task[1].workbench.material_state, target_candidate))
         if len(target_candidate) == 0:
             return
-        min_dist = np.linalg.norm(robot.coord-np.array([w.coord for w in target_candidate]), 2, -1).argmin(0) #选个最近的
-        min_dist_wb = target_candidate[min_dist]
+        min_dist = np.linalg.norm(robot.coord-np.array([task[1].workbench.coord for task in target_candidate]), 2, -1).argmin(0) #选个最近的
+        new_task = target_candidate[min_dist]
         robot.task[1].done = False
         if carry_item in robot.task[1].workbench.assigned_sell:
             robot.task[1].workbench.assigned_sell.remove(carry_item)
-        robot.task = (robot.task[0], DummyTaskNode(min_dist_wb))
-        robot.task_coord[1] = min_dist_wb.coord
-
+        robot.task = new_task
+        robot.task_coord[1] = new_task[1].workbench.coord
 
 
     def dispatch(self):
@@ -261,22 +256,21 @@ class Scheduler2:
         if len(self.sub_tasks) == 0:
             return
         sub_task_src = [s[0] for s in self.sub_tasks]
-        sub_task_dst = [s[1] for s in self.sub_tasks]
+        task_profit = np.array([[profit[s.workbench.type_id] for s in sub_task_src]]).T
 
         # 计算距离
         sub_task_src_coord = np.array([s.workbench.coord for s in sub_task_src])
         dists = list(map(lambda r_coord: np.linalg.norm(sub_task_src_coord - r_coord, axis=-1), self.free_robots_coord))
-        dists = np.stack(dists, axis=-1)
+        effi = np.stack(dists, axis=-1)/task_profit # 最优效率
 
         # 任务分派，使用匈牙利算法
-        # assignment = linear_sum_assignment(dists)[0]
-        # assignment = assignment[:len(self.free_robots)]
-        # print(assignment, file=sys.stderr)
-        # assigned_idx = []
+        assignment = linear_sum_assignment(effi)[1]
+        assignment = assignment[:len(self.free_robots)]
+
         for i,r in enumerate(self.free_robots):
             if i >= len(sub_task_src): # 刚好分配了一个虚任务，就别干了
                 continue
-            task = self.sub_tasks[i]
+            task = self.sub_tasks[assignment[i]]
             src = task[0]
             dst = task[1]
             r.task = task
@@ -289,6 +283,7 @@ class Scheduler2:
             if dst.workbench.type_id not in (8,9):
                 dst.workbench.assigned_sell.append(src.workbench.type_id)
             print(f"Robot {r.index} buy {src.workbench.index},{src.workbench.type_id} sell to {dst.workbench.index},{dst.workbench.type_id}", file=sys.stderr)
+
             # self.sub_tasks[assignment[i]] = None
         # self.sub_tasks = list(filter(lambda x: x is not None, self.sub_tasks))
 
