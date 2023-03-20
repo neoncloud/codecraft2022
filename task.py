@@ -1,13 +1,15 @@
-import numpy as np
-from frame import Map, Workbench
-import sys
 import itertools
+import sys
 from queue import Queue
 from typing import List
 
+import numpy as np
+
+from frame import Map, Workbench, Robot
+
 dependency_dict = {
     9: [(7, 6, 5, 4),],
-    8: [7],
+    8: [7,],
     7: [6,5,4,],
     6: [2,3],
     5: [1,3],
@@ -15,6 +17,30 @@ dependency_dict = {
     3: [],
     2: [],
     1: []
+}
+
+dependency_T = {
+    1:[4,5,9],
+    2:[4,6,9],
+    3:[5,6,9],
+    4:[7,9],
+    5:[7,9],
+    6:[7,9],
+    7:[8,9],
+    8:[],
+    9:[]
+}
+
+production_time = {
+    9: 0,
+    8: 0,
+    7: 1000,
+    6: 500,
+    5: 500,
+    4: 500,
+    3: 50,
+    2: 50,
+    1: 50
 }
 
 profit = {
@@ -38,7 +64,7 @@ def print_child(task_node):
         print_child(c)
     print("end", file=sys.stderr)
 
-def flatten(lst):
+def flatten(lst:List):
     flattened_lst = []
     for elem in lst:
         if isinstance(elem, list) or isinstance(elem, tuple):
@@ -46,6 +72,10 @@ def flatten(lst):
         else:
             flattened_lst.append(elem)
     return flattened_lst
+
+class DummyTaskNode:
+    def __init__(self, workbench:Workbench) -> None:
+        self.workbench = workbench
 
 class TaskNode:
     def __init__(self, workbench:Workbench, wb_id_to_type:np.ndarray, adj_mat:np.ndarray, map_obj:Map) -> None:
@@ -57,14 +87,14 @@ class TaskNode:
     def make_children(self, wb_id_to_type:np.ndarray, adj_mat:np.ndarray, workbenches:List[Workbench]):
         dep_nodes = dependency_dict[self.workbench.type_id]
         children = []
-        failed = False
+        # failed = False
         for d in dep_nodes:
             # 这里不管任务之间是tuple(或关系) 还是int(与关系)，都能同一处理
             # 选出所有可用的工作台
             workbench_candidate = np.argwhere(np.isin(wb_id_to_type, np.array(d))).squeeze()
             workbench_candidate = np.atleast_1d(workbench_candidate) 
-            # 筛选没有被放置的。这里的规则是选原料格是空的，理由是如果原料格非空，则意味着这个工作台因为原料不足或者产品格被占用，导致生产进程阻塞。
-            workbench_candidate = list(filter(lambda wb_id: len(workbenches[wb_id].assigned_sell) == 0 and not workbenches[wb_id].assigned_buy and wb_id not in self.blacklist, workbench_candidate))
+            # 筛选条件，要么没材料，要么已经产出了等待进行下一批（意味着材料将被清空）
+            workbench_candidate = list(filter(lambda wb_id: wb_id not in self.blacklist and (len(workbenches[wb_id].material_state)==0 or workbenches[wb_id].remaining_time!=0), workbench_candidate))
             if len(workbench_candidate) == 0: # 没有可用的工作台
                 return []
             # 查询最高效的
@@ -76,15 +106,11 @@ class TaskNode:
             child = TaskNode(min_wb, wb_id_to_type, adj_mat, workbenches)
             if len(child.children) == 0 and child.workbench.type_id not in (1,2,3): # 没有可用的工作台，则ban掉这个工作台，重新开始
                 self.blacklist.append(min_wb.index)
-                failed = True
+                # failed = True
                 break
-            # 给对应源和目标工作台注册已分配
-            min_wb.assigned_buy = True
-            if self.workbench.type_id not in (8,9): # 8号和9号只进不产
-                self.workbench.assigned_sell.append(min_wb.type_id)
             children.append(child)
-        if failed:
-            children = self.make_children(wb_id_to_type, adj_mat, workbenches)
+        # if failed:
+        #     children = self.make_children(wb_id_to_type, adj_mat, workbenches)
         return children
 
     def if_all_done(self):
@@ -98,7 +124,7 @@ class TaskNode:
             return []
         # 当前节点已经产出，或者即将产出
         min_time = np.linalg.norm(robot_coord - self.workbench.coord, 2, -1).min(0)/6.0
-        if self.workbench.remaining_time/50.0 <= min_time and self.workbench.remaining_time>=0:
+        if ((self.workbench.remaining_time <= min_time and self.workbench.remaining_time>=0) or self.workbench.product_state or self.workbench.type_id in (1,2,3)) and not self.workbench.assigned_buy:
             return self
         # 否则递归遍历子节点
         avail_sub_tasks = []
@@ -109,7 +135,9 @@ class TaskNode:
                 # 返回的是一个列表，说明是中间节点
                 avail_sub_tasks += child_avail_tasks
             else: # 返回的是一个workbench，说明是尾节点
-                # if child_avail_tasks.workbench.type_id not in self.workbench.material_state:
+                if child_avail_tasks.workbench.type_id in self.workbench.material_state:
+                    # 目前被占用了，就先别急
+                    continue
                 avail_sub_tasks.append((child_avail_tasks, self))
         return avail_sub_tasks
 
@@ -125,8 +153,8 @@ class Scheduler2:
         self.free_robots = []
         self.free_robots_coord = []
         self.task_queue.put(self.make_task())
-        self.update_free_robots()
-        self.update_sub_task()
+        self.update_robot()
+        self.update_task()
 
 
     def make_task(self):
@@ -135,7 +163,10 @@ class Scheduler2:
         task = TaskNode(self.map.workbenches[top_node], self.wb_id_to_type, self.eff_adj_mat, self.map.workbenches)
         print("New TaskNode:", file=sys.stderr)
         print_child(task)
-        return task
+        if len(task.children)==0:
+            return None
+        else:
+            return task
 
     def make_eff_adj_mat(self):
         # 计算质效比邻接矩阵 赶路时间/收益，不邻接的设为999
@@ -151,46 +182,36 @@ class Scheduler2:
                     eff_adj_mat[i,j] += 50 #补偿机器人加速减速时间
                     eff_adj_mat[i,j] /= profit[i_wb_type]
         return eff_adj_mat
-    
-    def update_free_robots(self):
-        self.free_robots = list(filter(lambda r: r.carrying_item == 0 and r.buy_done and r.sell_done , self.map.robots))
-        self.free_robots_coord = np.array([r.coord for r in self.free_robots])
-    
-    def update_task_tree(self):
-        if len(self.free_robots_coord) == 0:
-            return
-        temp = []
-        while not self.task_queue.empty():
-            task = self.task_queue.get()
-            # task.update(self.free_robots_coord)
-            temp.append(task)
-        for i in temp:
-            self.task_queue.put(i)
 
-    def update_sub_task(self):
-        if len(self.free_robots) <= len(self.sub_tasks):
-            # 还有活干，没必要更新
-            return
+    def update_task(self):
+        # if len(self.free_robots) <= len(self.sub_tasks):
+        #     # 还有活干，没必要更新
+        #     return
         avail_sub_tasks = []
         temp = []
         while not self.task_queue.empty():
             task = self.task_queue.get()
             if task.if_all_done(): # 全干完了
+                print(f"TaskNode {task} Done!", file=sys.stderr)
                 self.task_queue.task_done()
                 # del task
             else:
-                sub_tasks = task.get_avail_sub_task(self.map.robot_coord)
-                avail_sub_tasks += sub_tasks
+                avail_sub_tasks += task.get_avail_sub_task(self.map.robot_coord)
                 temp.append(task)
         for i in temp:
             self.task_queue.put(i)
-        self.sub_tasks = avail_sub_tasks
         # 有机器人无事可做了，就新建一个任务树
         if len(avail_sub_tasks) < len(self.free_robots): 
             task = self.make_task()
+            if task is None:
+                return
             self.task_queue.put(task)
+        self.sub_tasks = sorted(avail_sub_tasks, key=lambda item: item[0].workbench.type_id, reverse=True) # 按从type_id从高到低排序
+            # self.update_sub_task()
 
-    def update_robot_task(self):
+    def update_robot(self):
+        self.free_robots = list(filter(lambda r: r.carrying_item == 0 and r.buy_done and r.sell_done , self.map.robots))
+        self.free_robots_coord = np.array([r.coord for r in self.free_robots])
         for r in self.map.robots:
             if r in self.free_robots:
                 continue
@@ -202,11 +223,36 @@ class Scheduler2:
                 else:
                     r.buy_done = True
                     r.sell_done = True
+                # if np.linalg.norm(tgt_task.workbench.coord - r.coord, 2 ,-1) < 2.0: # 快要靠近时发生冲突，要卖的东西已经被人抢卖了
+                #     if r.carrying_item in tgt_task.workbench.material_state:
+                #         # 看看来的工件会不会导致工作台进行生产
+                #         incoming = set(tgt_task.workbench.material_state+tgt_task.workbench.assigned_sell)
+                #         require = set(dependency_dict[tgt_task.workbench.type_id])
+                #         if incoming != require:
+                #             self.reassign(r)
             if r.sell_done:
                 if r.carrying_item == 0:
                     r.sell_done = True
                     if src_task.workbench.type_id in tgt_task.workbench.assigned_sell:
                         tgt_task.workbench.assigned_sell.remove(src_task.workbench.type_id)
+
+    def reassign(self, robot:Robot):
+        carry_item = robot.carrying_item
+        target_candidate = dependency_T[carry_item] # 找个新目标
+        target_candidate = flatten([self.wb_type_to_id[w] for w in target_candidate])
+        target_candidate = [self.map.workbenches[w] for w in target_candidate]
+        target_candidate = list(filter(lambda w: carry_item not in w.material_state and carry_item not in w.assigned_sell, target_candidate))
+        if len(target_candidate) == 0:
+            return
+        min_dist = np.linalg.norm(robot.coord-np.array([w.coord for w in target_candidate]), 2, -1).argmin(0) #选个最近的
+        min_dist_wb = target_candidate[min_dist]
+        robot.task[1].done = False
+        if carry_item in robot.task[1].workbench.assigned_sell:
+            robot.task[1].workbench.assigned_sell.remove(carry_item)
+        robot.task = (robot.task[0], DummyTaskNode(min_dist_wb))
+        robot.task_coord[1] = min_dist_wb.coord
+
+
 
     def dispatch(self):
         # 选择空闲机器人
@@ -219,33 +265,36 @@ class Scheduler2:
 
         # 计算距离
         sub_task_src_coord = np.array([s.workbench.coord for s in sub_task_src])
-        dists = list(map(lambda r: np.linalg.norm(sub_task_src_coord - r.coord, axis=-1), self.free_robots))
+        dists = list(map(lambda r_coord: np.linalg.norm(sub_task_src_coord - r_coord, axis=-1), self.free_robots_coord))
         dists = np.stack(dists, axis=-1)
 
         # 任务分派，使用匈牙利算法
-        assignment = linear_sum_assignment(dists)[0]
-        assignment = assignment[:len(self.free_robots)]
-        print(assignment, file=sys.stderr)
+        # assignment = linear_sum_assignment(dists)[0]
+        # assignment = assignment[:len(self.free_robots)]
+        # print(assignment, file=sys.stderr)
         # assigned_idx = []
         for i,r in enumerate(self.free_robots):
             if i >= len(sub_task_src): # 刚好分配了一个虚任务，就别干了
                 continue
-            src = sub_task_src[assignment[i]]
-            dst = sub_task_dst[assignment[i]]
-            r.task = [src, dst]
+            task = self.sub_tasks[i]
+            src = task[0]
+            dst = task[1]
+            r.task = task
             r.task_coord = np.array([src.workbench.coord, dst.workbench.coord])
             r.buy_done = False
             r.sell_done = False
             src.done = True
-            print(f"Robot {r.index} buy {src.workbench.index},{src.workbench.type_id} sell to {dst.workbench.index},{dst.workbench.type_id}, tasknode {self.sub_tasks[assignment[i]]}", file=sys.stderr)
-            self.sub_tasks[assignment[i]] = None
-        self.sub_tasks = list(filter(lambda x: x is not None, self.sub_tasks))
+            if src.workbench.type_id not in (1,2,3):
+                src.workbench.assigned_buy = True
+            if dst.workbench.type_id not in (8,9):
+                dst.workbench.assigned_sell.append(src.workbench.type_id)
+            print(f"Robot {r.index} buy {src.workbench.index},{src.workbench.type_id} sell to {dst.workbench.index},{dst.workbench.type_id}", file=sys.stderr)
+            # self.sub_tasks[assignment[i]] = None
+        # self.sub_tasks = list(filter(lambda x: x is not None, self.sub_tasks))
 
     def step(self):
-        self.update_robot_task()
-        self.update_free_robots()
-        self.update_task_tree()
-        self.update_sub_task()
+        self.update_task()
+        self.update_robot()
         self.dispatch()
 
 
