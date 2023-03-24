@@ -91,6 +91,8 @@ def filter_avail_sub_tasks(avail_sub_tasks):
                 dst_curr = set(dst.workbench.material_state).union(set(dst.workbench.incoming))
                 if dst_curr != dst_depencency:
                     continue
+                if (dst.workbench.material_state+dst.workbench.incoming).count(src.workbench.type_id)>1:
+                    continue
 
         # Find minimum dst.id for same dst.workbench.index and src.workbench.type_id
         flag = True
@@ -137,10 +139,6 @@ class TaskNode:
                 workbench_candidate_ = list(filter(lambda wb_id: wb_id not in self.blacklist and len(workbenches[wb_id].assigned_buy)<=i, workbench_candidate))
                 if len(workbench_candidate_) == 0:  # 没有可用的工作台
                     i += 1
-                    # print(f"node id:{self.node_id}, child workbench candidate{d}, pass:{i} not ok", file=sys.stderr)
-                    # if i >= 3:
-                    #     return []
-                    # else:
                     continue
                 else: 
                     break
@@ -180,7 +178,7 @@ class TaskNode:
         # 当前节点已经产出，或者即将产出
         min_time = np.linalg.norm(
             robot_coord - self.workbench.coord, 2, -1).min(0)/6.0
-        if (self.workbench.remaining_time/50.0 <= min_time and self.workbench.remaining_time >= 0) or len(self.workbench.assigned_sell)!=0:
+        if (self.workbench.remaining_time/50.0 <= min_time+1.0 and self.workbench.remaining_time >= 0) or len(self.workbench.assigned_sell)!=0:
             return self
         # 否则递归遍历子节点
         avail_sub_tasks = []
@@ -262,7 +260,7 @@ class Scheduler2:
             if task.if_all_done():  # 全干完了
                 # print(f"TaskNode {task} Done!", file=sys.stderr)
                 self.task_queue.task_done()
-                del task
+                # del task
             else:
                 avail_sub_tasks += task.get_avail_sub_task(
                     self.map.robot_coord)
@@ -271,7 +269,7 @@ class Scheduler2:
             self.task_queue.put(i)
         # 有机器人无事可做了，就新建一个任务树
         avail_sub_tasks = filter_avail_sub_tasks(avail_sub_tasks)
-        if len(avail_sub_tasks) < len(self.free_robots) and self.task_queue.qsize()<20:
+        if len(avail_sub_tasks) < len(self.free_robots) and self.task_queue.qsize()<100:
             task = self.make_task()
             if task is None:
                 return
@@ -294,7 +292,8 @@ class Scheduler2:
             return
         sub_task_src = [s[0] for s in self.sub_tasks]
         task_profit = np.array([[profit[s.workbench.type_id]
-                               for s in sub_task_src]])
+                               for s in sub_task_src]])/10000.0
+        task_profit += np.array([1/(1+s.node_id) for s in sub_task_src])
 
         # 计算距离
         sub_task_src_coord = np.array(

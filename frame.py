@@ -331,7 +331,7 @@ class Robot:
             w = KWW * delta_w
             
             if np.abs(delta_w) > 0.3*np.pi:
-                v = -1.5
+                v = -1.8
             else:
                 v = np.linalg.norm(best_velocity, axis=-1)
             # v = np.linalg.norm(best_velocity, axis=-1)
@@ -351,11 +351,14 @@ class Robot:
                 w, v = move(self,best_velocity,task_index=0)
             else:
                 if self.workbench_id == self.task[1].workbench.index:
-                    if self.carrying_item != 0 and self.carrying_item not in self.task[1].workbench.material_state:
-                        sell = True
-                        if self.task[1].workbench.type_id not in (8,9):
-                            self.task[1].workbench.incoming.remove(self.carrying_item)
-                    self.sell_done = True
+                    if self.carrying_item != 0:
+                        if self.carrying_item not in self.task[1].workbench.material_state:
+                            sell = True
+                            if self.task[1].workbench.type_id not in (8,9):
+                                self.task[1].workbench.incoming.remove(self.carrying_item)
+                    else:
+                        self.sell_done = True
+                        self.buy_done = True
                     # self.task_coord = None
                 best_velocity = final_version(self,task_index=1)
                 w, v = move(self,best_velocity,task_index=1)
