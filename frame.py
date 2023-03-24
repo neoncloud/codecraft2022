@@ -305,7 +305,6 @@ class Robot:
             bound_rep = calculate_bound_rep(self) # 计算边界斥力
             target_vector = tar_att + bound_rep # 计算合力
             pref_velocity = target_vector / np.linalg.norm(target_vector) * max_speed
-            # print('tar_att = ', tar_att, 'bound_rep = ', bound_rep, 'tar_vec=',target_vector, 'tar_ori=',target_orientation, file=sys.stderr)
             
             other_robots_coord = np.delete(robot_coord, self.index, axis=0)
             other_robots_linearv = np.delete(robot_linear_v, self.index, axis=0)

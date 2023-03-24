@@ -224,8 +224,8 @@ class Scheduler2:
         top_node = np.random.choice(top_nodes, 1).item()
         task = TaskNode(
             self.map.workbenches[top_node], self.wb_id_to_type, self.eff_adj_mat, self.map.workbenches, self.task_node_id)
-        print("New TaskNode:", file=sys.stderr)
-        print_child(task)
+        # print("New TaskNode:", file=sys.stderr)
+        # print_child(task)
         if len(task.children) == 0:
             return None
         else:
@@ -311,7 +311,7 @@ class Scheduler2:
         for i, r in enumerate(self.free_robots):
             if i >= len(assignment):  # 刚好分配了一个虚任务，就别干了
                 break
-            print(f"task len:{len(self.sub_tasks)}, assignment len:{len(assignment)}, assignment: {assignment}", file=sys.stderr)
+            # print(f"task len:{len(self.sub_tasks)}, assignment len:{len(assignment)}, assignment: {assignment}", file=sys.stderr)
             # print(self.sub_tasks[assignment[i]], file=sys.stderr)
             task = self.sub_tasks[assignment[i]]
             src = task[0]
@@ -326,7 +326,7 @@ class Scheduler2:
                 dst.done = True
             else:
                 dst.workbench.incoming.append(src.workbench.type_id)
-            print(f"Robot {r.index} buy {src.workbench.index},{src.workbench.type_id} sell to {dst.workbench.index},{dst.workbench.type_id}", file=sys.stderr)
+            # print(f"Robot {r.index} buy {src.workbench.index},{src.workbench.type_id} sell to {dst.workbench.index},{dst.workbench.type_id}", file=sys.stderr)
 
             # self.sub_tasks[assignment[i]] = None
         # self.sub_tasks = list(filter(lambda x: x is not None, self.sub_tasks))

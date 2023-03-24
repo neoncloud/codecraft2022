@@ -1,6 +1,7 @@
 import sys
 from frame import parse_init_frame
 from task import Scheduler2
+import time
 
 def read_until_ok():
     input_str = ""
@@ -19,10 +20,11 @@ def print_stdin_and_stderr(s):
 
 if __name__ == '__main__':
     read_until_ok() # 不需要读地图，第一帧就能读到全部数据
+    time.sleep(2)
     print("OK")
     init_frame = read_until_ok()
-    with open("test.log", "w") as f:
-        f.write(init_frame)
+    # with open("test.log", "w") as f:
+    #     f.write(init_frame)
     map_obj = parse_init_frame(init_frame)
     scheduler = Scheduler2(map_obj)
     # init_task = scheduler.init_task()
