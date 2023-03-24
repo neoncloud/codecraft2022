@@ -291,8 +291,8 @@ class Scheduler2:
             return
         sub_task_src = [s[0] for s in self.sub_tasks]
         task_profit = np.array([[profit[s.workbench.type_id]
-                               for s in sub_task_src]])/10000.0
-        task_profit += np.array([1/(1+s.node_id) for s in sub_task_src])
+                               for s in sub_task_src]])/1000.0
+        task_profit += np.array([10000/(1+s.node_id) for s in sub_task_src])
 
         # 计算距离
         sub_task_src_coord = np.array(
@@ -303,6 +303,7 @@ class Scheduler2:
 
         # 任务分派，使用匈牙利算法
         assignment = linear_sum_assignment(effi.T)[1]
+        # print(effi.shape, assignment, file=sys.stderr)
         assignment = assignment[:len(self.free_robots)]
 
         # print(assignment, file=sys.stderr)

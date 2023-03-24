@@ -363,9 +363,9 @@ class Robot:
 
         def move(self, best_velocity, task_index):
             KWW = 100
-            KVV1 = 0.1
-            KWW1 = 300
-            KVV = 1.3
+            # KVV1 = 0.1
+            # KWW1 = 300
+            # KVV = 1.3
             v = 6
             desired_angle = de_normalize_angle(
                 np.arctan2(best_velocity[1], best_velocity[0]))
@@ -375,7 +375,7 @@ class Robot:
             w = KWW * delta_w
 
             if np.abs(delta_w) > 0.3*np.pi:
-                v = -1.8
+                v = -1.0
             else:
                 v = np.linalg.norm(best_velocity, axis=-1)
             # v = np.linalg.norm(best_velocity, axis=-1)
