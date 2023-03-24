@@ -4,12 +4,12 @@ import sys
 
 ######### 运动学超参数 #########
 # # 势场参数
-k_att = 10.0 # 表示机器人与目标之间的引力常数
-obs_k_rep = 350.0 # 表示机器人与障碍物之间的斥力常数
-bound_k_rep = 25000.0 # 表示机器人与边界之间的斥力常数
-obs_rep_range = 25.0 # 表示障碍物斥力的作用范围
-bound_rep_range = 1.5 # 表示边界斥力的作用范围
-targe_att_range =4.0 # 表示目的地的引力作用范围
+k_att = 10.0  # 表示机器人与目标之间的引力常数
+obs_k_rep = 350.0  # 表示机器人与障碍物之间的斥力常数
+bound_k_rep = 25000.0  # 表示机器人与边界之间的斥力常数
+obs_rep_range = 25.0  # 表示障碍物斥力的作用范围
+bound_rep_range = 1.5  # 表示边界斥力的作用范围
+targe_att_range = 4.0  # 表示目的地的引力作用范围
 
 EPSILON = 0.00001
 time_horizon = 0.5
@@ -21,6 +21,7 @@ class Line:
     def __init__(self):
         self.direction = np.array([0.0, 0.0])
         self.point = np.array([0.0, 0.0])
+
 
 class Workbench:
     def __init__(self, type_id: int, x: float, y: float, remaining_time: int, material_state: int, product_state: bool, index: int):
@@ -38,7 +39,8 @@ class Workbench:
 
     def update(self, remaining_time: int = None, material_state: int = None, product_state: bool = None):
         # 重要！只有当：之前没产出，更新后产出了，才等于成功产出一个，不重不漏
-        if self.type_id in (1,2,3) or (product_state and not self.product_state): # 生产出来了一个东西，就加入排单队列
+        # 生产出来了一个东西，就加入排单队列
+        if self.type_id in (1, 2, 3) or (product_state and not self.product_state):
             if len(self.assigned_buy) != 0:
                 self.assigned_sell.append(self.assigned_buy.pop(0))
             # else: #无人认领的
@@ -51,8 +53,8 @@ class Workbench:
 
 class Robot:
     def __init__(self, workbench_id: int, carrying_item: int, time_value_coeff: float, collision_value_coeff: float,
-                 angular_velocity: float, linear_velocity_x: float, linear_velocity_y: float, heading: float, x: float, y: float, index:int):
-        self.index =  index # 机器人的唯一索引
+                 angular_velocity: float, linear_velocity_x: float, linear_velocity_y: float, heading: float, x: float, y: float, index: int):
+        self.index = index  # 机器人的唯一索引
         self.workbench_id = workbench_id
         self.carrying_item = carrying_item
         self.time_value_coeff = time_value_coeff
@@ -69,8 +71,8 @@ class Robot:
         self.freezed = 0
         self.destroy = False
 
-    def update(self, workbench_id:int=None, carrying_item:int=None, time_value_coeff:float=None, collision_value_coeff:float=None,
-               angular_velocity:float=None, linear_velocity_x: float=None, linear_velocity_y: float=None, heading:float=None, x:float=None, y:float=None):
+    def update(self, workbench_id: int = None, carrying_item: int = None, time_value_coeff: float = None, collision_value_coeff: float = None,
+               angular_velocity: float = None, linear_velocity_x: float = None, linear_velocity_y: float = None, heading: float = None, x: float = None, y: float = None):
         self.workbench_id = workbench_id
         self.carrying_item = carrying_item
         self.time_value_coeff = time_value_coeff
@@ -81,7 +83,7 @@ class Robot:
         self.coord = np.array([x, y])
         self.destroy = False
 
-    def get_action(self, adj_mat:np.ndarray, headin_glist:np.ndarray, robot_coord:np.ndarray, robot_linear_v:np.ndarray,robot_carrying_item:np.ndarray):
+    def get_action(self, adj_mat: np.ndarray, headin_glist: np.ndarray, robot_coord: np.ndarray, robot_linear_v: np.ndarray, robot_carrying_item: np.ndarray):
         def abs_sq(vector):
             return np.dot(vector, vector)
 
@@ -91,16 +93,21 @@ class Robot:
         def compute_orca_lines(self, other_robots_coord, other_robots_linearv, other_robots_carry, time_horizon, time_step):
             invTimeHorizon = 1.0 / time_horizon
             orca_lines = []
-            
+
             for i in range(3):
                 relativePosition = other_robots_coord[i] - self.coord
-                relativeVelocity = self.linear_velocity - other_robots_linearv[i]
+                relativeVelocity = self.linear_velocity - \
+                    other_robots_linearv[i]
 
                 distSq = abs_sq(relativePosition)
-                if self.carrying_item == 0: agentradius = 0.45
-                else: agentradius = 0.53
-                if other_robots_carry[i] == 0: otherradius = 0.45
-                else: otherradius = 0.53
+                if self.carrying_item == 0:
+                    agentradius = 0.45
+                else:
+                    agentradius = 0.53
+                if other_robots_carry[i] == 0:
+                    otherradius = 0.45
+                else:
+                    otherradius = 0.53
                 combinedRadius = agentradius + otherradius
                 combinedRadiusSq = square(combinedRadius)
 
@@ -123,9 +130,11 @@ class Robot:
                         leg = np.sqrt(distSq - combinedRadiusSq)
 
                         if np.cross(relativePosition, w) > 0.0:
-                            line.direction = np.array([(relativePosition[0] * leg - relativePosition[1] * combinedRadius), (relativePosition[0] * combinedRadius + relativePosition[1] * leg)]) / distSq
+                            line.direction = np.array([(relativePosition[0] * leg - relativePosition[1] * combinedRadius), (
+                                relativePosition[0] * combinedRadius + relativePosition[1] * leg)]) / distSq
                         else:
-                            line.direction = -np.array([(relativePosition[0] * leg + relativePosition[1] * combinedRadius), (-relativePosition[0] * combinedRadius + relativePosition[1] * leg)]) / distSq
+                            line.direction = -np.array([(relativePosition[0] * leg + relativePosition[1] * combinedRadius),
+                                                       (-relativePosition[0] * combinedRadius + relativePosition[1] * leg)]) / distSq
 
                         dotProduct2 = np.dot(relativeVelocity, line.direction)
                         u = dotProduct2 * line.direction - relativeVelocity
@@ -147,7 +156,8 @@ class Robot:
 
         def linear_program1(lines, lineNo, radius, optVelocity, directionOpt):
             dotProduct = np.dot(lines[lineNo].point, lines[lineNo].direction)
-            discriminant = np.square(dotProduct) + np.square(radius) - np.square(np.linalg.norm(lines[lineNo].point))
+            discriminant = np.square(
+                dotProduct) + np.square(radius) - np.square(np.linalg.norm(lines[lineNo].point))
 
             if discriminant < 0.0:
                 return False, None
@@ -157,8 +167,10 @@ class Robot:
             tRight = -dotProduct + sqrtDiscriminant
 
             for i in range(lineNo):
-                denominator = np.linalg.det(np.column_stack((lines[lineNo].direction, lines[i].direction)))
-                numerator = np.linalg.det(np.column_stack((lines[i].direction, lines[lineNo].point - lines[i].point)))
+                denominator = np.linalg.det(np.column_stack(
+                    (lines[lineNo].direction, lines[i].direction)))
+                numerator = np.linalg.det(np.column_stack(
+                    (lines[i].direction, lines[lineNo].point - lines[i].point)))
 
                 if np.abs(denominator) <= EPSILON:
                     if numerator < 0.0:
@@ -177,16 +189,21 @@ class Robot:
 
             if directionOpt:
                 if np.dot(optVelocity, lines[lineNo].direction) > 0.0:
-                    result = lines[lineNo].point + tRight * lines[lineNo].direction
+                    result = lines[lineNo].point + \
+                        tRight * lines[lineNo].direction
                 else:
-                    result = lines[lineNo].point + tLeft * lines[lineNo].direction
+                    result = lines[lineNo].point + \
+                        tLeft * lines[lineNo].direction
             else:
-                t = np.dot(lines[lineNo].direction, (optVelocity - lines[lineNo].point))
+                t = np.dot(lines[lineNo].direction,
+                           (optVelocity - lines[lineNo].point))
 
                 if t < tLeft:
-                    result = lines[lineNo].point + tLeft * lines[lineNo].direction
+                    result = lines[lineNo].point + \
+                        tLeft * lines[lineNo].direction
                 elif t > tRight:
-                    result = lines[lineNo].point + tRight * lines[lineNo].direction
+                    result = lines[lineNo].point + \
+                        tRight * lines[lineNo].direction
                 else:
                     result = lines[lineNo].point + t * lines[lineNo].direction
 
@@ -203,7 +220,8 @@ class Robot:
             for i in range(len(lines)):
                 if np.linalg.det(np.column_stack((lines[i].direction, lines[i].point - result))) > 0.0:
                     tempResult = result
-                    success, result = linear_program1(lines, i, radius, optVelocity, directionOpt)
+                    success, result = linear_program1(
+                        lines, i, radius, optVelocity, directionOpt)
                     if not success:
                         result = tempResult
                         return i, result
@@ -222,54 +240,70 @@ class Robot:
 
                     for j in range(numObstLines, i):
                         line = Line()
-                        determinant = np.linalg.det(np.column_stack((lines[i].direction, lines[j].direction)))
+                        determinant = np.linalg.det(np.column_stack(
+                            (lines[i].direction, lines[j].direction)))
 
                         if np.abs(determinant) <= EPSILON:
                             if np.dot(lines[i].direction, lines[j].direction) > 0.0:
                                 continue
                             else:
-                                line.point = 0.5 * (lines[i].point + lines[j].point)
+                                line.point = 0.5 * \
+                                    (lines[i].point + lines[j].point)
                         else:
-                            line.point = lines[i].point + (np.linalg.det(np.column_stack((lines[j].direction, lines[i].point - lines[j].point))) / determinant) * lines[i].direction
-                        line.direction = (lines[j].direction - lines[i].direction) / np.linalg.norm(lines[j].direction - lines[i].direction)
+                            line.point = lines[i].point + (np.linalg.det(np.column_stack(
+                                (lines[j].direction, lines[i].point - lines[j].point))) / determinant) * lines[i].direction
+                        line.direction = (lines[j].direction - lines[i].direction) / np.linalg.norm(
+                            lines[j].direction - lines[i].direction)
                         projLines.append(line)
 
                     tempResult = result
-                    lineFail, result = linear_program2(projLines, radius, np.array([-lines[i].direction[1], lines[i].direction[0]]), True, result)
+                    lineFail, result = linear_program2(projLines, radius, np.array(
+                        [-lines[i].direction[1], lines[i].direction[0]]), True, result)
                     if lineFail < len(projLines):
                         result = tempResult
 
-                    distance = np.linalg.det(np.column_stack((lines[i].direction, lines[i].point - result)))
+                    distance = np.linalg.det(np.column_stack(
+                        (lines[i].direction, lines[i].point - result)))
             return result
 
-        def calculate_target_att(self,task_index):
-            tar_d= np.linalg.norm(np.float64(self.coord - self.task_coord[task_index,:]))
+        def calculate_target_att(self, task_index):
+            tar_d = np.linalg.norm(np.float64(
+                self.coord - self.task_coord[task_index, :]))
             if tar_d > targe_att_range:
-                att = k_att * (self.task_coord[task_index,:] - self.coord) / tar_d
+                att = k_att * \
+                    (self.task_coord[task_index, :] - self.coord) / tar_d
             else:
-                att = k_att * targe_att_range**6 * (self.task_coord[task_index,:] - self.coord)
+                att = k_att * targe_att_range**6 * \
+                    (self.task_coord[task_index, :] - self.coord)
             return att
-        
+
         def calculate_bound_rep(self):
             boundary_rep = np.float64(np.array([0, 0]))
             if self.coord[0] <= bound_rep_range:
-                boundary_rep[0] = bound_k_rep * (1/(self.coord[0]+1e-6) - 1/bound_rep_range) / (self.coord[0]+1e-6)**2
+                boundary_rep[0] = bound_k_rep * \
+                    (1/(self.coord[0]+1e-6) - 1 /
+                     bound_rep_range) / (self.coord[0]+1e-6)**2
             elif self.coord[0] > 50 - bound_rep_range:
-                boundary_rep[0] = -bound_k_rep * (1/(50-self.coord[0]+1e-6) - 1/bound_rep_range) / (50-self.coord[0]+1e-6)**2
+                boundary_rep[0] = -bound_k_rep * (
+                    1/(50-self.coord[0]+1e-6) - 1/bound_rep_range) / (50-self.coord[0]+1e-6)**2
             if self.coord[1] <= bound_rep_range:
-                boundary_rep[1] = bound_k_rep * (1/(self.coord[1]+1e-6) - 1/bound_rep_range) / (self.coord[1]+1e-6)**2
+                boundary_rep[1] = bound_k_rep * \
+                    (1/(self.coord[1]+1e-6) - 1 /
+                     bound_rep_range) / (self.coord[1]+1e-6)**2
             elif self.coord[1] > 50 - bound_rep_range:
-                boundary_rep[1] = -bound_k_rep * (1/(50-self.coord[1]+1e-6) - 1/bound_rep_range) / (50-self.coord[1]+1e-6)**2
+                boundary_rep[1] = -bound_k_rep * (
+                    1/(50-self.coord[1]+1e-6) - 1/bound_rep_range) / (50-self.coord[1]+1e-6)**2
             return boundary_rep
-        
+
         def normalize_angle(angle):
             return (angle + np.pi) % (2 * np.pi) - np.pi
-        
+
         def de_normalize_angle(angle):
-            if angle < 0: angle = 2*np.pi + angle
+            if angle < 0:
+                angle = 2*np.pi + angle
             return angle
-        
-        def bound_turn_round(self,delta_dir,bound_range=1):
+
+        def bound_turn_round(self, delta_dir, bound_range=1):
             if self.coord[1] > 50 - bound_range:
                 if self.heading > 0 and self.heading <= 0.5*np.pi and delta_dir > 0:
                     delta_dir = delta_dir - 2 * np.pi
@@ -291,45 +325,55 @@ class Robot:
                 elif self.heading < 0 and self.heading >= -0.5*np.pi and delta_dir > 0:
                     delta_dir = delta_dir - 2 * np.pi
             return delta_dir
-        
+
         def get_cur_bound_distance(self):
-            bound_points = np.array([[self.coord[0],50],[self.coord[0], 0],[50,self.coord[1]],[0,self.coord[1]]])
+            bound_points = np.array([[self.coord[0], 50], [self.coord[0], 0], [
+                                    50, self.coord[1]], [0, self.coord[1]]])
             minimum_distance = 50
             for bound in bound_points:
                 distance = np.linalg.norm(bound-self.coord)
-                if distance < minimum_distance: minimum_distance = distance
+                if distance < minimum_distance:
+                    minimum_distance = distance
             return minimum_distance
-        def final_version(self,task_index):
+
+        def final_version(self, task_index):
             # # 得到目标方向
-            tar_att = calculate_target_att(self,task_index) # 计算目标引力
-            bound_rep = calculate_bound_rep(self) # 计算边界斥力
-            target_vector = tar_att + bound_rep # 计算合力
-            pref_velocity = target_vector / np.linalg.norm(target_vector) * max_speed
-            
+            tar_att = calculate_target_att(self, task_index)  # 计算目标引力
+            bound_rep = calculate_bound_rep(self)  # 计算边界斥力
+            target_vector = tar_att + bound_rep  # 计算合力
+            pref_velocity = target_vector / \
+                np.linalg.norm(target_vector) * max_speed
+
             other_robots_coord = np.delete(robot_coord, self.index, axis=0)
-            other_robots_linearv = np.delete(robot_linear_v, self.index, axis=0)
-            other_robots_carry = np.delete(robot_carrying_item, self.index, axis=0)
-            
-            orca_lines = compute_orca_lines(self, other_robots_coord, other_robots_linearv, other_robots_carry, time_horizon, time_step)
-            
+            other_robots_linearv = np.delete(
+                robot_linear_v, self.index, axis=0)
+            other_robots_carry = np.delete(
+                robot_carrying_item, self.index, axis=0)
+
+            orca_lines = compute_orca_lines(
+                self, other_robots_coord, other_robots_linearv, other_robots_carry, time_horizon, time_step)
+
             new_velocity = np.array([0.0, 0.0])
-            lineFail, new_velocity = linear_program2(orca_lines, max_speed, pref_velocity, False, new_velocity)
+            lineFail, new_velocity = linear_program2(
+                orca_lines, max_speed, pref_velocity, False, new_velocity)
             if lineFail < len(orca_lines):
-                new_velocity = linear_program3(orca_lines, len(orca_lines), lineFail, max_speed, new_velocity)
+                new_velocity = linear_program3(orca_lines, len(
+                    orca_lines), lineFail, max_speed, new_velocity)
             return new_velocity
 
-        def move(self,best_velocity,task_index):
+        def move(self, best_velocity, task_index):
             KWW = 100
             KVV1 = 0.1
             KWW1 = 300
             KVV = 1.3
             v = 6
-            desired_angle = de_normalize_angle(np.arctan2(best_velocity[1], best_velocity[0]))
+            desired_angle = de_normalize_angle(
+                np.arctan2(best_velocity[1], best_velocity[0]))
             heading = de_normalize_angle(self.heading)
             delta_w = normalize_angle(desired_angle - heading)
             # delta_w = bound_turn_round(self,delta_dir=delta_w,bound_range=1)
             w = KWW * delta_w
-            
+
             if np.abs(delta_w) > 0.3*np.pi:
                 v = -1.8
             else:
@@ -347,21 +391,22 @@ class Robot:
                         buy = True
                     else:
                         self.buy_done = True
-                best_velocity = final_version(self,task_index=0)
-                w, v = move(self,best_velocity,task_index=0)
+                best_velocity = final_version(self, task_index=0)
+                w, v = move(self, best_velocity, task_index=0)
             else:
                 if self.workbench_id == self.task[1].workbench.index:
                     if self.carrying_item != 0:
                         if self.carrying_item not in self.task[1].workbench.material_state:
                             sell = True
-                            if self.task[1].workbench.type_id not in (8,9):
-                                self.task[1].workbench.incoming.remove(self.carrying_item)
+                            if self.task[1].workbench.type_id not in (8, 9):
+                                self.task[1].workbench.incoming.remove(
+                                    self.carrying_item)
                     else:
                         self.sell_done = True
                         self.buy_done = True
                     # self.task_coord = None
-                best_velocity = final_version(self,task_index=1)
-                w, v = move(self,best_velocity,task_index=1)
+                best_velocity = final_version(self, task_index=1)
+                w, v = move(self, best_velocity, task_index=1)
         return sell, buy, destroy, w, v
 
 
@@ -370,38 +415,45 @@ class Map:
         self.frame_num = frame_num
         self.money = money
         self.workbenches = workbenches
-        self.robots = robots 
-        self.workbench_adj_mat = self._get_workbench_adj_mat() # 邻接矩阵
-        self.robot_adj_mat = self._get_robot_adj_mat() # 邻接矩阵
+        self.robots = robots
+        self.workbench_adj_mat = self._get_workbench_adj_mat()  # 邻接矩阵
+        self.robot_adj_mat = self._get_robot_adj_mat()  # 邻接矩阵
         self.robot_heading = [r.heading for r in self.robots]
         self.robot_coord = np.array([r.coord for r in self.robots])
         self.wb_coord = np.array([w.coord for w in self.workbenches])
         self.num_robots = len(robots)
         self.num_workbenches = len(workbenches)
-        self.robot_linear_v = np.array([r.linear_velocity for r in self.robots])
-        self.robot_carrying_item = np.array([r.carrying_item for r in self.robots])
+        self.robot_linear_v = np.array(
+            [r.linear_velocity for r in self.robots])
+        self.robot_carrying_item = np.array(
+            [r.carrying_item for r in self.robots])
 
-    def update(self, input_string:str):
+    def update(self, input_string: str):
         lines = input_string.strip().split('\n')
         self.frame_num, self.money = map(int, lines[0].split())
         workbench_count = int(lines[1])
         # for i in range(2, 2 + workbench_count):
         for i, w in enumerate(self.workbenches, 2):
             workbench_data = list(map(float, lines[i].split()))
-            w.update(int(workbench_data[3]), int(workbench_data[4]), bool(workbench_data[5]))
+            w.update(int(workbench_data[3]), int(
+                workbench_data[4]), bool(workbench_data[5]))
         for i, r in enumerate(self.robots, 2 + workbench_count):
             robot_data = list(map(float, lines[i].split()))
-            r.update(int(robot_data[0]), int(robot_data[1]), robot_data[2], robot_data[3], robot_data[4], robot_data[5], robot_data[6], robot_data[7], robot_data[8], robot_data[9])
+            r.update(int(robot_data[0]), int(robot_data[1]), robot_data[2], robot_data[3],
+                     robot_data[4], robot_data[5], robot_data[6], robot_data[7], robot_data[8], robot_data[9])
         self.robot_adj_mat = self._get_robot_adj_mat()
         self.robot_heading = [r.heading for r in self.robots]
-        self.robot_linear_v = np.array([r.linear_velocity for r in self.robots])
+        self.robot_linear_v = np.array(
+            [r.linear_velocity for r in self.robots])
         self.robot_coord = np.array([r.coord for r in self.robots])
-        self.robot_carrying_item = np.array([r.carrying_item for r in self.robots])
+        self.robot_carrying_item = np.array(
+            [r.carrying_item for r in self.robots])
 
     def output(self):
         output = f"{self.frame_num}\n"
         for i, r in enumerate(self.robots):
-            sell, buy, destroy, w, v = r.get_action(self.robot_adj_mat, self.robot_heading, self.robot_coord, self.robot_linear_v, self.robot_carrying_item)
+            sell, buy, destroy, w, v = r.get_action(
+                self.robot_adj_mat, self.robot_heading, self.robot_coord, self.robot_linear_v, self.robot_carrying_item)
             output += f"forward {i} {v}\nrotate {i} {w}\n"
             if sell:
                 output += f"sell {i}\n"
