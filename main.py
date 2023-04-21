@@ -2,7 +2,9 @@ import sys
 from frame import parse_init_frame
 from task import Scheduler2
 import time
-
+# import debugpy
+# debugpy.listen(("localhost", 5678))
+# debugpy.wait_for_client()
 def read_until_ok():
     input_str = ""
     while True:

@@ -1,11 +1,11 @@
 import itertools
 import sys
 from queue import Queue
-from typing import List, Tuple
+from typing import List
 
 import numpy as np
 
-from frame import Map, Workbench, Robot
+from test.frame_2 import Map, Workbench, Robot
 
 dependency_dict = {
     9: [(7, 6, 5, 4), ],
@@ -85,8 +85,16 @@ def filter_avail_sub_tasks(avail_sub_tasks):
         if src.workbench.type_id in dst.workbench.material_state:
             continue
         if src.workbench.type_id in dst.workbench.incoming:
-            # 对面有货堆积
+            # if dst.workbench.product_state:  # 对面有货堆积
             continue
+            # else:
+            #     dst_depencency = set(dependency_dict[dst.workbench.type_id])
+            #     dst_curr = set(dst.workbench.material_state).union(
+            #         set(dst.workbench.incoming))
+            #     if dst_curr != dst_depencency:
+            #         continue
+            #     if (dst.workbench.material_state+dst.workbench.incoming).count(src.workbench.type_id) > 1:
+            #         continue
 
         # Find minimum dst.id for same dst.workbench.index and src.workbench.type_id
         flag = True
@@ -99,50 +107,17 @@ def filter_avail_sub_tasks(avail_sub_tasks):
             filtered_sub_tasks.append((src, dst))
     return filtered_sub_tasks
 
-
 def filter_avail_sub_tasks2(avail_sub_tasks):
-    # Step 1: Remove tuples if src.workbench.type_id in dst.workbench.material_state or dst.workbench.incoming
     filtered_sub_tasks = []
     for i in range(len(avail_sub_tasks)):
         src, dst = avail_sub_tasks[i]
-        if src.workbench.type_id in dst.workbench.material_state or src.workbench.type_id in dst.workbench.incoming:
+        # Check if src.workbench.type_id is in dst.workbench.material_state list
+        if src.workbench.type_id in dst.workbench.material_state:
             continue
+        if src.workbench.type_id in dst.workbench.incoming: # 对面有货堆积
+            continue
+        # Keep the tuple if the above condition is not satisfied
         filtered_sub_tasks.append((src, dst))
-
-    # Step 2: Keep only the src.node_id smallest one for same src.workbench.type_id and dst.workbench.index
-    type_index_dict = {}
-    for src, dst in filtered_sub_tasks:
-        key = (src.workbench.type_id, dst.workbench.index)
-        if key not in type_index_dict:
-            type_index_dict[key] = []
-        type_index_dict[key].append((src.node_id, dst))
-
-    for key in type_index_dict:
-        type_index_dict[key].sort()
-        for i in range(len(type_index_dict[key])):
-            if i == 0:
-                continue
-            src, dst = type_index_dict[key][i]
-            filtered_sub_tasks.remove((src, dst))
-
-    # Step 3: Keep only the src.node_id smallest one for same src.workbench.index and src.workbench.type_id not in (1, 2, 3)
-    index_dict = {}
-    for src, dst in filtered_sub_tasks:
-        if src.workbench.type_id in (1, 2, 3):
-            continue
-        key = src.workbench.index
-        if key not in index_dict:
-            index_dict[key] = []
-        index_dict[key].append((src.node_id, src, dst))
-
-    for key in index_dict:
-        index_dict[key].sort()
-        for i in range(len(index_dict[key])):
-            if i == 0:
-                continue
-            src, dst = index_dict[key][i][1], index_dict[key][i][2]
-            filtered_sub_tasks.remove((src, dst))
-
     return filtered_sub_tasks
 
 
@@ -153,7 +128,6 @@ class TaskNode:
         self.node_id = node_id
         self.children = self.make_children(wb_id_to_type, adj_mat, map_obj)
         self.done = False  # 这个flag只能单向从false到true
-        self.num_children = self._get_num_children()
 
     def make_children(self, wb_id_to_type: np.ndarray, adj_mat: np.ndarray, workbenches: List[Workbench]):
         dep_nodes = dependency_dict[self.workbench.type_id]
@@ -162,8 +136,6 @@ class TaskNode:
         for d in dep_nodes:
             # 这里不管任务之间是tuple(或关系) 还是int(与关系)，都能同一处理
             # 选出所有可用的工作台
-            if 7 in wb_id_to_type and 7 in np.array(d):
-                d = 7 # 场上有7, 不许卖1，2，3，4，5，6给9
             workbench_candidate = np.argwhere(
                 np.isin(wb_id_to_type, np.array(d))).squeeze()
             workbench_candidate = np.atleast_1d(workbench_candidate)
@@ -172,24 +144,16 @@ class TaskNode:
             # 筛选条件，要么没材料，要么已经产出了等待进行下一批（意味着材料将被清空）
             # 优选排单少的工作台
             # print(f"node id:{self.node_id}, child {d} workbench candidate{workbench_candidate}, assigned buy: {[len(workbenches[w].assigned_buy) for w in workbench_candidate]}", file=sys.stderr)
-            # if any(elem in np.array(d) for elem in (1,2,3)):
-            # if d != 7:
             i = 0
             while True:
-                workbench_candidate_ = list(filter(lambda wb_id: wb_id not in self.blacklist and workbenches[wb_id].assigned_task <= i, workbench_candidate))
+                workbench_candidate_ = list(filter(lambda wb_id: wb_id not in self.blacklist and len(
+                    workbenches[wb_id].assigned_buy) <= i, workbench_candidate))
                 if len(workbench_candidate_) == 0:  # 没有可用的工作台
                     i += 1
                     continue
                 else:
                     break
-            # else:
-            #     workbench_candidate_ = list(filter(lambda wb_id: wb_id not in self.blacklist, workbench_candidate))
-            #     if len(workbench_candidate_) > 2:
-            #         workbench_candidate_ = workbench_candidate_[:2]
-
             workbench_candidate = workbench_candidate_
-            # else:
-            #     workbench_candidate =list(filter(lambda wb_id: wb_id not in self.blacklist, workbench_candidate))
             # 查询最高效的
             # 因为不知道d是tuple还是int，因此通过wb_types反查类型id
             min_wb = adj_mat[self.workbench.index, workbench_candidate]
@@ -201,18 +165,18 @@ class TaskNode:
             # 没有可用的工作台，则ban掉这个工作台，重新开始
             if len(child.children) == 0 and child.workbench.type_id not in (1, 2, 3):
                 self.blacklist.append(min_wb.index)
+                # failed = True
                 break
-            child.workbench.assigned_task += 1
+            # if len(child.workbench.assigned_sell) != 0 and None in child.workbench.assigned_sell:
+            #     # 有无人认领的货，就抢了
+            #     idx = child.workbench.assigned_sell.index(None)
+            #     child.workbench.assigned_sell[idx] = id(self)
+            # else:
+            #     child.workbench.assigned_buy.append(id(self))
             children.append(child)
         # if failed:
         #     children = self.make_children(wb_id_to_type, adj_mat, workbenches)
         return children
-    
-    def _get_num_children(self):
-        return len(self.children)+sum([child._get_num_children() for child in self.children])
-    
-    def get_num_done(self):
-        return (1 if self.done else 0)+sum([child.get_num_done() for child in self.children])
 
     def if_all_done(self):
         if len(self.children) == 0:
@@ -224,52 +188,29 @@ class TaskNode:
         if self.done:
             return []
         # 当前节点已经产出，或者即将产出
-        min_time = np.linalg.norm(
-            robot_coord - self.workbench.coord, 2, -1).min(0)/7.0
-        if (self.workbench.remaining_time/50.0 <= min_time and self.workbench.remaining_time > 0) or self.workbench.product_state:
+        # min_time = np.linalg.norm(
+        #     robot_coord - self.workbench.coord, 2, -1).min(0)/6.0
+        if self.workbench.product_done:
             return self
         # 否则递归遍历子节点
         avail_sub_tasks = []
         for child in self.children:
             child_avail_tasks = child.get_avail_sub_task(robot_coord)
+            # print(child_avail_tasks, file=sys.stderr)
             if isinstance(child_avail_tasks, list):
                 # 返回的是一个列表，说明是中间节点
                 avail_sub_tasks += child_avail_tasks
             else:  # 返回的是一个workbench，说明是尾节点
+                # buy_list = child_avail_tasks.workbench.assigned_buy
+                # sell_list = child_avail_tasks.workbench.assigned_sell
+                # # if len(buy_list) != 0:
+                # #     if buy_list[0] == id(self):
+                # #         sell_list.append(buy_list.pop(0))
+                # if len(sell_list) != 0:
+                #     if sell_list[0] == id(self):
                 avail_sub_tasks.append((child_avail_tasks, self))
         return avail_sub_tasks
 
-def filter_avail_sub_tasks3(avail_sub_tasks: List[Tuple[TaskNode, TaskNode]], reverse=False):
-    # Create a dictionary to store the filtered sub tasks
-    filtered_sub_tasks = {}
-    for i in range(len(avail_sub_tasks)):
-        src, dst = avail_sub_tasks[i]
-        # Check if src.workbench.type_id is in dst.workbench.material_state list
-        if src.workbench.type_id in dst.workbench.material_state+dst.workbench.incoming:
-            continue
-        if src.workbench.outcoming:
-            continue
-        # Filter the sub tasks based on src.workbench.type_id and dst.workbench.index
-        key = (src.workbench.type_id, dst.workbench.index)
-        if key in filtered_sub_tasks:
-            # Add dst to the existing list of sub tasks
-            filtered_sub_tasks[key].append((src, dst))
-        else:
-            # Create a new list of sub tasks for this key
-            filtered_sub_tasks[key] = [(src, dst)]
-    # Filter the sub tasks based on dst.node_id and src.node_id
-    for key in filtered_sub_tasks:
-        # if key[0] not in (1, 2, 3):
-            # Filter the sub tasks based on src.node_id
-        # filtered_sub_tasks[key] = sorted(filtered_sub_tasks[key], key=lambda x: x[0].node_id)
-        # Filter the sub tasks based on dst.node_id
-        filtered_sub_tasks[key] = sorted(filtered_sub_tasks[key], key=lambda x: x[1].node_id, reverse=reverse)
-        filtered_sub_tasks[key] = filtered_sub_tasks[key][:1]
-    # Create a new list of filtered sub tasks
-    new_filtered_sub_tasks = []
-    for key in filtered_sub_tasks:
-        new_filtered_sub_tasks.extend(filtered_sub_tasks[key])
-    return new_filtered_sub_tasks
 
 class Scheduler2:
     def __init__(self, map_obj: Map) -> None:
@@ -279,12 +220,10 @@ class Scheduler2:
         self.wb_type_to_id = {i: [
             w.index for w in self.map.workbenches if w.type_id == i] for i in range(1, 10)}
         self.wb_id_to_type = [w.type_id for w in self.map.workbenches]
-        self.IDLE_TIME_THRES = 8 if len(self.wb_type_to_id[7]) == 1 else 4
         self.eff_adj_mat = self.make_eff_adj_mat()
         self.free_robots = []
         self.free_robots_coord = []
         self.task_node_id = 0
-        self.idle_time = 0
         self.task_queue.put(self.make_task())
         self.update_robot()
         self.update_task()
@@ -312,7 +251,7 @@ class Scheduler2:
                 j_wb_type = self.wb_id_to_type[j]
                 deps = flatten(dependency_dict[i_wb_type])
                 if j_wb_type not in deps:
-                    eff_adj_mat[i, j] = 1e6
+                    eff_adj_mat[i, j] = 999
                 else:
                     eff_adj_mat[i, j] += 50  # 补偿机器人加速减速时间
                     eff_adj_mat[i, j] /= profit[i_wb_type]
@@ -333,7 +272,6 @@ class Scheduler2:
             if task.if_all_done():  # 全干完了
                 # print(f"TaskNode {task} Done!", file=sys.stderr)
                 self.task_queue.task_done()
-                # self.update_task()
                 # del task
             else:
                 avail_sub_tasks += task.get_avail_sub_task(
@@ -342,20 +280,13 @@ class Scheduler2:
         for i in temp:
             self.task_queue.put(i)
         # 有机器人无事可做了，就新建一个任务树
-        # print(f"Avail sub task:{avail_sub_tasks}", file=sys.stderr)
-        reverse = len(self.wb_type_to_id[7])==1
-        avail_sub_tasks = filter_avail_sub_tasks3(avail_sub_tasks, reverse)
-        if len(avail_sub_tasks) < len(self.free_robots):
-            self.idle_time += 1
-            if self.idle_time > self.IDLE_TIME_THRES:
-                task = self.make_task()
-                if task is None:
-                    return
-                self.task_queue.put(task)
-                self.idle_time = 0
-        else:
-            self.idle_time = 0
-            # self.update_task()
+        avail_sub_tasks = filter_avail_sub_tasks2(avail_sub_tasks)
+        if len(avail_sub_tasks) < len(self.free_robots) and self.task_queue.qsize() < 10:
+            task = self.make_task()
+            if task is None:
+                return
+            self.task_queue.put(task)
+            self.update_task()
         # avail_sub_tasks = list(filter(lambda task: task[0].workbench.type_id not in task[1].workbench.assigned_sell, avail_sub_tasks))
         self.sub_tasks = avail_sub_tasks
         # self.update_sub_task()
@@ -364,8 +295,6 @@ class Scheduler2:
         self.free_robots = list(filter(
             lambda r: r.carrying_item == 0 and r.buy_done and r.sell_done, self.map.robots))
         self.free_robots_coord = np.array([r.coord for r in self.free_robots])
-        # free_robot_id = [r.index for r in self.free_robots]
-        # print(f"free robot{free_robot_id}", file=sys.stderr)
 
     def dispatch(self):
         # 选择空闲机器人
@@ -374,39 +303,48 @@ class Scheduler2:
         if len(self.sub_tasks) == 0:
             return
         sub_task_src = [s[0] for s in self.sub_tasks]
-        sub_task_dst = [s[1] for s in self.sub_tasks]
-        task_profit = np.array([[profit[s.workbench.type_id]
-                               for s in sub_task_src]])/1000.0
-        task_profit += np.array([10000/(1+s.node_id) for s in sub_task_dst])
+        sub_task_id = [s.node_id for s in sub_task_src]
+        # task_profit = np.array([[profit[s.workbench.type_id]
+        #                        for s in sub_task_src]])/1000.0
+        # task_profit += np.array([10000/(1+s.node_id) for s in sub_task_src])
 
         # 计算距离
         sub_task_src_coord = np.array(
             [s.workbench.coord for s in sub_task_src])
         dists = list(map(lambda r_coord: np.linalg.norm(
             sub_task_src_coord - r_coord, axis=-1), self.free_robots_coord))
-        effi = dists/task_profit  # 最优效率
+        dists = np.stack(dists, axis=-1)
+        
+        # effi = np.stack(dists, axis=-1)/task_profit.T  # 最优效率
 
         # 任务分派，使用匈牙利算法
-        assignment = linear_sum_assignment(effi)[1]
-        print(effi.shape, assignment, file=sys.stderr)
-        # assignment = assignment[:len(self.free_robots)]
+        assignment = linear_sum_assignment(dists)[0]
+        # print(effi.shape, assignment, file=sys.stderr)
+        assignment = assignment[:len(self.free_robots)]
 
         # print(assignment, file=sys.stderr)
-        for task_idx, robot in zip(assignment, self.free_robots):
+        for i, r in enumerate(self.free_robots):
+            if i >= len(assignment):  # 刚好分配了一个虚任务，就别干了
+                break
             # print(f"task len:{len(self.sub_tasks)}, assignment len:{len(assignment)}, assignment: {assignment}", file=sys.stderr)
             # print(self.sub_tasks[assignment[i]], file=sys.stderr)
-            task = self.sub_tasks[task_idx]
+            task = self.sub_tasks[assignment[i]]
             src = task[0]
             dst = task[1]
-            robot.task = task
-            robot.task_coord = np.array([src.workbench.coord, dst.workbench.coord])
-            robot.buy_done = False
-            robot.sell_done = False
-            src.workbench.outcoming = True
+            r.task = task
+            r.task_coord = np.array([src.workbench.coord, dst.workbench.coord])
+            r.buy_done = False
+            r.sell_done = False
             src.done = True
-            if dst.workbench.type_id not in (8, 9):
+            src.workbench.product_done = False
+            if dst.workbench.type_id in (8, 9):
+                dst.done = True
+            else:
                 dst.workbench.incoming.append(src.workbench.type_id)
             # print(f"Robot {r.index} buy {src.workbench.index},{src.workbench.type_id} sell to {dst.workbench.index},{dst.workbench.type_id}", file=sys.stderr)
+
+            # self.sub_tasks[assignment[i]] = None
+        # self.sub_tasks = list(filter(lambda x: x is not None, self.sub_tasks))
 
     def step(self):
         self.update_robot()
