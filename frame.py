@@ -1,20 +1,21 @@
+from collections import deque
 from typing import List
 import numpy as np
 import sys
 
 ######### 运动学超参数 #########
 # # 势场参数
-k_att = 10.0  # 表示机器人与目标之间的引力常数
-obs_k_rep = 350.0  # 表示机器人与障碍物之间的斥力常数
-bound_k_rep = 25000.0  # 表示机器人与边界之间的斥力常数
-obs_rep_range = 25.0  # 表示障碍物斥力的作用范围
-bound_rep_range = 1.5  # 表示边界斥力的作用范围
-targe_att_range = 4.0  # 表示目的地的引力作用范围
+k_att = 12.0  # 表示机器人与目标之间的引力常数
+# obs_k_rep = 350.0  # 表示机器人与障碍物之间的斥力常数
+bound_k_rep = 12000.0  # 表示机器人与边界之间的斥力常数
+# obs_rep_range = 25.0  # 表示障碍物斥力的作用范围
+bound_rep_range = 1.12  # 表示边界斥力的作用范围
+targe_att_range = 4.2  # 表示目的地的引力作用范围
 
-EPSILON = 0.00001
+EPSILON = 1e-6
 time_horizon = 0.5
 time_step = 0.02
-max_speed = 6.02
+max_speed = 6.05
 
 
 class Line:
@@ -154,7 +155,7 @@ class Workbench:
         self.index = index
         self.type_id = type_id
         self.coord = np.array([x, y])
-        self.remaining_time = remaining_time
+        self.remaining_time = remaining_time/50
         self.material_state = [j for j, bit in enumerate(
             reversed(bin(int(material_state))[2:])) if bit == "1"]
         self.product_state = product_state
@@ -164,9 +165,14 @@ class Workbench:
 
     def update(self, remaining_time: int = None, material_state: int = None, product_state: bool = None):
         self.product_state = product_state
-        self.remaining_time = remaining_time
+        self.remaining_time = remaining_time/50
         self.material_state = [j for j, bit in enumerate(
             reversed(bin(int(material_state))[2:])) if bit == "1"]
+    
+    def get_eta(self):
+        if self.product_state:
+            return 0
+        return self.remaining_time
 
 
 class Robot:
@@ -179,15 +185,21 @@ class Robot:
         self.collision_value_coeff = collision_value_coeff
         self.angular_velocity = angular_velocity
         self.linear_velocity = np.array([linear_velocity_x, linear_velocity_y])
+        self.velo = np.linalg.norm(self.linear_velocity, 2, -1)
+        self.avg_velo = deque(maxlen=200)
+        self.avg_velo.append(self.velo)
         self.heading = heading
         self.coord = np.array([x, y])
-        self.task = None
+        self.curr_task = None
+        self.next_task = None
         self.task_coord = None  # 用于存每次的任务 该 robot 要去买的坐标 | 该 robot 要去卖的坐标
         self.last_carry = 0
         self.buy_done = True
         self.sell_done = True
         self.freezed = 0
         self.destroy = False
+        self.eta = 0
+        self.free = self.carrying_item == 0 and self.buy_done and self.sell_done
 
     def update(self, workbench_id: int = None, carrying_item: int = None, time_value_coeff: float = None, collision_value_coeff: float = None,
                angular_velocity: float = None, linear_velocity_x: float = None, linear_velocity_y: float = None, heading: float = None, x: float = None, y: float = None):
@@ -197,10 +209,29 @@ class Robot:
         self.collision_value_coeff = collision_value_coeff
         self.angular_velocity = angular_velocity
         self.linear_velocity = np.array([linear_velocity_x, linear_velocity_y])
+        self.velo = np.linalg.norm(self.linear_velocity, 2, -1)
+        self.avg_velo.append(self.velo)
         self.heading = heading
         self.coord = np.array([x, y])
-        if self.task_coord is not None and self.task is not None:
-            self.task_coord[1] = self.task[1].workbench.coord
+        if self.task_coord is not None and self.curr_task is not None:
+            self.task_coord[1] = self.curr_task[1].workbench.coord
+
+        self.free = self.carrying_item == 0 and self.buy_done and self.sell_done
+        self.eta = 0
+        if not self.free:
+            if self.task_coord is not None:
+                if not self.buy_done:
+                    coord_vec = self.coord-self.task_coord[0]
+                    coord_vec_norm = np.linalg.norm(coord_vec, 2, -1)
+                    self.eta += coord_vec_norm/6.0
+                if not self.sell_done:
+                    if not self.buy_done:
+                        coord_vec = self.task_coord[0]-self.task_coord[1]
+                    else:
+                        coord_vec = self.coord-self.task_coord[1]
+                    coord_vec_norm = np.linalg.norm(coord_vec, 2, -1)
+                    self.eta += coord_vec_norm/6.0
+
 
     def compute_orca_lines(self, other_robots_coord, other_robots_linearv, other_robots_carry, time_horizon, time_step):
         invTimeHorizon = 1.0 / time_horizon
@@ -347,35 +378,37 @@ class Robot:
             w, v = 0, 0
         else:
             if not self.buy_done:
-                if self.workbench_id == self.task[0].workbench.index:
+                if self.workbench_id == self.curr_task[0].workbench.index:
                     if self.carrying_item == 0:
-                        if not self.task[0].workbench.product_state:
+                        if not self.curr_task[0].workbench.product_state:
                             # 失败，对面还没生产
-                            self.buy_done = True
-                            self.sell_done = True
+                            eta = self.curr_task[0].workbench.get_eta()
+                            if eta<=0 or eta > 100:
+                                self.buy_done = True
+                                self.sell_done = True
                             # self.task[0].done = False
                         else:
                             buy = True
-                            self.task[0].workbench.outcoming = False
+                            self.curr_task[0].workbench.outcoming = False
                             # self.task[0].done = True
                     else:
                         self.buy_done = True
-                        self.task[0].workbench.assigned_task -= 1
+                        self.curr_task[0].workbench.assigned_task -= 1
                 best_velocity = self.final_version(task_index=0, robot_coord=robot_coord, robot_linear_v=robot_linear_v, robot_carrying_item=robot_carrying_item)
                 w, v = self.move(best_velocity)
             elif not self.sell_done:
-                if self.workbench_id == self.task[1].workbench.index:
+                if self.workbench_id == self.curr_task[1].workbench.index:
                     if self.carrying_item != 0:
-                        if self.carrying_item not in self.task[1].workbench.material_state:
+                        if self.carrying_item not in self.curr_task[1].workbench.material_state:
                             sell = True
-                            if self.carrying_item in self.task[1].workbench.incoming:
-                                self.task[1].workbench.incoming.remove(
+                            if self.curr_task[1].workbench.type_id not in (8,9):
+                                self.curr_task[1].workbench.incoming.remove(
                                     self.carrying_item)
                         else:
                             delta = np.array([25, 25])-self.task_coord[1]
                             self.task_coord[1] += 3*delta/np.linalg.norm(delta)
                     else:
-                        self.task[0].workbench.assigned_task -= 1
+                        # self.curr_task[0].workbench.assigned_task -= 1
                         self.sell_done = True
                         self.buy_done = True
                     # self.task_coord = None
